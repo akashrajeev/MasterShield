@@ -1,0 +1,1 @@
+export default function AttackDetailLoading() { return <div className="library-loading detail-loading" aria-label="Loading attack intelligence"><div className="loading-title skeleton"/><div className="skeleton loading-graph"/>{Array.from({length:3},(_,index)=><div className="skeleton loading-section" key={index}/>)}</div> }
