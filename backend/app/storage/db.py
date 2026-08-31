@@ -48,7 +48,6 @@ def init_db(path: Path | None = None) -> None:
       created_at TEXT NOT NULL
     );
     """)
-    # Lightweight migration for databases created by the first scaffold.
     cols = {row[1] for row in conn.execute("PRAGMA table_info(simulation_runs)").fetchall()}
     for name, ddl in [("adaptation", "TEXT NOT NULL DEFAULT 'static'"), ("noise", "TEXT NOT NULL DEFAULT 'medium'")]:
         if name not in cols:
@@ -84,3 +83,31 @@ def save_round(record: dict[str, Any], path: Path | None = None) -> None:
         json.dumps(record["attack_ids"]), json.dumps(record["metrics"]), record["created_at"],
     ))
     conn.commit(); conn.close()
+
+
+def get_simulation(simulation_id: str, path: Path | None = None) -> dict[str, Any] | None:
+    conn = connect(path)
+    row = conn.execute("SELECT * FROM simulation_runs WHERE simulation_id=?", (simulation_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_experiment(experiment_id: str, path: Path | None = None) -> dict[str, Any] | None:
+    conn = connect(path)
+    row = conn.execute("SELECT * FROM experiment_metrics WHERE experiment_id=?", (experiment_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    result = dict(row)
+    result["metrics"] = json.loads(result.pop("metrics_json"))
+    return result
+
+
+def get_rounds(simulation_id: str, path: Path | None = None) -> list[dict[str, Any]]:
+    conn = connect(path)
+    rows = conn.execute("SELECT * FROM closed_loop_rounds WHERE simulation_id=? ORDER BY round_number", (simulation_id,)).fetchall()
+    conn.close()
+    return [
+        {**dict(row), "attack_ids": json.loads(row["attack_ids_json"]), "metrics": json.loads(row["metrics_json"])}
+        for row in rows
+    ]
