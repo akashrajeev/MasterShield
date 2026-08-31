@@ -177,6 +177,16 @@ data/attacks/              canonical attack catalog
 ml/                        generated model/result locations
 ```
 
+## Documentation
+
+- `../README.md` — complete project and system overview
+- `../docs/ARCHITECTURE.md` — component and data-flow architecture
+- `../docs/API.md` — API contract and request examples
+- `../docs/MODEL_AND_EVALUATION.md` — model and evaluation methodology
+- `../docs/REPRODUCIBILITY.md` — experiment reproduction guide
+- `../docs/CHALLENGE_MAPPING.md` — challenge criteria mapping
+- `../docs/SUBMISSION_CHECKLIST.md` — final submission verification
+
 ## Safety boundary
 
 Everything is synthetic and defensive. The backend does not execute real payment attacks, obtain credentials, contact victims, interact with banks/merchants, or generate operational phishing/deepfake material. GenAI concepts are represented as abstract scenario metadata and observable payment-security telemetry for research and detection evaluation.
