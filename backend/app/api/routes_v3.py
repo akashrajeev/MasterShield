@@ -16,7 +16,7 @@ from ..features.pipeline import build_features
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
 from ..schemas import DetectionRequest, SimulationConfig
-from ..storage.db import init_db, save_metrics, save_simulation
+from ..storage.db import get_experiment, get_rounds, get_simulation, init_db, save_metrics, save_simulation
 
 router = APIRouter(prefix="/api", tags=["mastershield"])
 MODEL_PATH = Path("ml/models/detector.joblib")
@@ -54,7 +54,7 @@ def catalog_summary():
         "payment_rail_coverage": rail_counts,
         "critical_count": sum(a.severity == "critical" for a in items),
         "very_high_difficulty_count": sum(a.difficulty == "very-high" for a in items),
-        "average_novelty": sum(a.novelty_score for a in items) / max(len(items), 1),
+        "average_novelty": round(sum(a.novelty_score for a in items) / max(len(items), 1), 4),
     }
 
 
@@ -84,12 +84,34 @@ def simulate(config: SimulationConfig):
         "adaptation": config.adaptation, "noise": config.noise,
         "status": "completed", "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    sample = df.head(100).where(df.head(100).notna(), None).to_dict(orient="records")
     return {
         "simulation_id": simulation_id, "seed": config.seed,
         "events_generated": len(df), "fraud_events": int(df.ground_truth.sum()),
-        "attack_count": len(ids_for(config)), "graph": graph_summary(df), "sample": sample,
+        "attack_count": len(ids_for(config)), "graph": graph_summary(df),
+        "sample": df.head(100).where(df.head(100).notna(), None).to_dict(orient="records"),
     }
+
+
+@router.get("/simulations/{simulation_id}")
+def simulation(simulation_id: str):
+    init_db()
+    item = get_simulation(simulation_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="simulation not found")
+    return item
+
+
+@router.get("/simulations/{simulation_id}/events")
+def simulation_events(simulation_id: str, limit: int = 100, offset: int = 0):
+    init_db()
+    item = get_simulation(simulation_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="simulation not found")
+    limit = max(1, min(limit, 1000)); offset = max(0, offset)
+    cfg = SimulationConfig(events=item["event_count"], seed=item["seed"], fraud_rate=item["fraud_rate"], difficulty=item["difficulty"])
+    df = build_dataset(cfg)
+    sample = df.iloc[offset: offset + limit].where(df.iloc[offset: offset + limit].notna(), None)
+    return {"simulation_id": simulation_id, "offset": offset, "limit": limit, "total": len(df), "events": sample.to_dict(orient="records")}
 
 
 @router.post("/detect")
@@ -118,6 +140,21 @@ def detect(config: DetectionRequest):
     }
 
 
+@router.get("/experiments/{experiment_id}")
+def experiment(experiment_id: str):
+    init_db()
+    item = get_experiment(experiment_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="experiment not found")
+    return item
+
+
+@router.get("/simulations/{simulation_id}/rounds")
+def simulation_rounds(simulation_id: str):
+    init_db()
+    return {"simulation_id": simulation_id, "rounds": get_rounds(simulation_id)}
+
+
 @router.get("/models/current")
 def current_model():
     if not MODEL_PATH.exists():
@@ -132,8 +169,7 @@ def synthetic_transaction(transaction_id: str, seed: int = 829134, events: int =
     row = df[df.transaction_id.eq(transaction_id)]
     if row.empty:
         raise HTTPException(status_code=404, detail="synthetic transaction not found")
-    payload = row.iloc[0].where(row.iloc[0].notna(), None).to_dict()
-    return {"synthetic": True, **payload}
+    return {"synthetic": True, **row.iloc[0].where(row.iloc[0].notna(), None).to_dict()}
 
 
 @router.get("/transactions/{transaction_id}/assessment")
