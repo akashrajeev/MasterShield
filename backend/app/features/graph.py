@@ -55,3 +55,23 @@ def derive_network_features(df: pd.DataFrame) -> pd.DataFrame:
         + 0.18 * (1 / (out["counterparty_count"] + 1)).clip(0, 1)
     ).clip(0, 1)
     return out
+
+
+def graph_summary(df: pd.DataFrame) -> dict:
+    """Compact graph statistics for API responses and demo telemetry."""
+    account_nodes = int(df["account_id"].nunique()) if "account_id" in df else 0
+    beneficiary_nodes = int(df["beneficiary_id"].nunique()) if "beneficiary_id" in df else 0
+    merchant_nodes = int(df["merchant_id"].nunique()) if "merchant_id" in df else 0
+    device_nodes = int(df["device_id"].nunique()) if "device_id" in df else 0
+    edges = int(len(df))
+    return {
+        "nodes": account_nodes + beneficiary_nodes + merchant_nodes + device_nodes,
+        "account_nodes": account_nodes,
+        "beneficiary_nodes": beneficiary_nodes,
+        "merchant_nodes": merchant_nodes,
+        "device_nodes": device_nodes,
+        "edges": edges,
+        "unique_accounts": account_nodes,
+        "unique_beneficiaries": beneficiary_nodes,
+        "max_beneficiary_fanout": int(df.groupby("beneficiary_id")["account_id"].nunique().max()) if len(df) else 0,
+    }
