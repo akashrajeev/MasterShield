@@ -10,9 +10,13 @@ BASE_FEATURES = [
     "beneficiary_age_days", "device_trust_score", "behavioral_deviation", "merchant_risk",
     "account_age_days", "normal_daily_txns", "network_risk", "device_reuse_score",
     "beneficiary_fanout_score", "account_beneficiary_degree", "beneficiary_account_degree",
+    "urgency_score", "approval_path_change", "content_risk", "cross_rail_activity",
 ]
 
-FEATURE_NAMES = BASE_FEATURES + ["amount_log", "velocity_ratio", "new_beneficiary", "low_device_trust", "high_velocity", "large_geo_jump"]
+FEATURE_NAMES = BASE_FEATURES + [
+    "amount_log", "velocity_ratio", "new_beneficiary", "low_device_trust",
+    "high_velocity", "large_geo_jump", "young_account_flag", "behavioral_amount_interaction",
+]
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -27,4 +31,6 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     x["low_device_trust"] = (x["device_trust_score"] < .5).astype(int)
     x["high_velocity"] = (x["velocity_1h"] >= 6).astype(int)
     x["large_geo_jump"] = (x["geo_distance_km"] >= 50).astype(int)
+    x["young_account_flag"] = (x["account_age_days"] < 30).astype(int)
+    x["behavioral_amount_interaction"] = x["behavioral_deviation"] * x["amount_log"]
     return x.replace([np.inf, -np.inf], 0).fillna(0)
