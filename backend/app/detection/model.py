@@ -7,12 +7,7 @@ import joblib
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier, IsolationForest
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import (
-    average_precision_score,
-    confusion_matrix,
-    precision_recall_fscore_support,
-    roc_auc_score,
-)
+from sklearn.metrics import average_precision_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
 
 from .thresholds import decision
 
@@ -24,7 +19,7 @@ def _bounded(value: float) -> float:
 class Detector:
     """Reproducible synthetic-payment fraud detector with fused risk signals."""
 
-    VERSION = "4.2"
+    VERSION = "4.3"
 
     def __init__(self) -> None:
         self.classifier = HistGradientBoostingClassifier(
@@ -58,20 +53,10 @@ class Detector:
         sample = X.iloc[: min(len(X), 1500)]
         labels = np.asarray(y)[: len(sample)]
         if len(np.unique(labels)) > 1:
-            perm = permutation_importance(
-                self.classifier,
-                sample,
-                labels,
-                n_repeats=3,
-                random_state=42,
-                scoring="roc_auc",
-            )
+            perm = permutation_importance(self.classifier, sample, labels, n_repeats=3, random_state=42, scoring="roc_auc")
             values = np.maximum(perm.importances_mean, 0)
             total = float(values.sum()) or 1.0
-            self.feature_importance_ = {
-                name: float(value / total)
-                for name, value in zip(self.feature_names, values)
-            }
+            self.feature_importance_ = {name: float(value / total) for name, value in zip(self.feature_names, values)}
         else:
             weight = 1.0 / max(len(self.feature_names), 1)
             self.feature_importance_ = {name: weight for name in self.feature_names}
@@ -80,11 +65,7 @@ class Detector:
 
     def _anomaly_score(self, X):
         raw = -self.anomaly.score_samples(X)
-        return np.clip(
-            (raw - self.anomaly_min) / (self.anomaly_max - self.anomaly_min),
-            0,
-            1,
-        )
+        return np.clip((raw - self.anomaly_min) / (self.anomaly_max - self.anomaly_min), 0, 1)
 
     def predict_scores(self, X):
         if not self.fitted:
@@ -106,24 +87,17 @@ class Detector:
     def evaluate(self, X, y, threshold=.5):
         scores = self.predict_scores(X)
         pred = (scores >= threshold).astype(int)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            y, pred, average="binary", zero_division=0
-        )
+        precision, recall, f1, _ = precision_recall_fscore_support(y, pred, average="binary", zero_division=0)
         tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
         auc = roc_auc_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         pr_auc = average_precision_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         return {
-            "precision": _bounded(precision),
-            "recall": _bounded(recall),
-            "f1": _bounded(f1),
-            "roc_auc": _bounded(auc),
-            "pr_auc": _bounded(pr_auc),
+            "precision": _bounded(precision), "recall": _bounded(recall), "f1": _bounded(f1),
+            "roc_auc": _bounded(auc), "pr_auc": _bounded(pr_auc),
             "false_positive_rate": _bounded(fp / max(fp + tn, 1)),
             "false_negative_rate": _bounded(fn / max(fn + tp, 1)),
-            "true_positives": int(tp),
-            "true_negatives": int(tn),
-            "false_positives": int(fp),
-            "false_negatives": int(fn),
+            "true_positives": int(tp), "true_negatives": int(tn),
+            "false_positives": int(fp), "false_negatives": int(fn),
         }
 
     def decisions(self, scores: Iterable[float], threshold=.5) -> list[str]:
@@ -151,20 +125,9 @@ class Detector:
             raw_value = float(values.get(name, 0.0))
             signal = self._signal_strength(name, raw_value)
             importance = float(self.feature_importance_.get(name, 0.0))
-            contributions.append({
-                "feature": name,
-                "value": raw_value,
-                "signal_strength": signal,
-                "importance": importance,
-                "contribution": signal * importance,
-            })
+            contributions.append({"feature": name, "value": raw_value, "signal_strength": signal, "importance": importance, "contribution": signal * importance})
         contributions.sort(key=lambda item: item["contribution"], reverse=True)
-        return {
-            "risk_score": float(score),
-            "decision": decision(float(score), threshold),
-            "prediction": int(score >= threshold),
-            "top_signals": contributions[:6],
-        }
+        return {"risk_score": float(score), "decision": decision(float(score), threshold), "prediction": int(score >= threshold), "top_signals": contributions[:6]}
 
     def save(self, path: str | Path) -> None:
         target = Path(path)
