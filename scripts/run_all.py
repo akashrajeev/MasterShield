@@ -4,10 +4,12 @@ import subprocess
 import sys
 
 COMMANDS = [
-    [sys.executable, "scripts/generate_data.py", "--events", "10000", "--seed", "829134", "--difficulty", "very-high"],
+    [sys.executable, "scripts/validate_catalog.py"],
+    [sys.executable, "scripts/generate_data.py", "--events", "10000", "--seed", "829134", "--difficulty", "very-high", "--adaptation", "adversarial"],
     [sys.executable, "scripts/train_model.py"],
     [sys.executable, "scripts/evaluate_model.py"],
     [sys.executable, "scripts/evaluate_unseen.py"],
+    [sys.executable, "scripts/benchmark.py"],
     [sys.executable, "scripts/run_closed_loop.py"],
 ]
 
