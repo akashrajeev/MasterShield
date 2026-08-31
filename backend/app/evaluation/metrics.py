@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import numpy as np
-from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 
 def binary_metrics(y_true, scores, threshold: float = .5) -> dict:
@@ -14,6 +21,7 @@ def binary_metrics(y_true, scores, threshold: float = .5) -> dict:
         "recall": float(recall_score(y, pred, zero_division=0)),
         "f1": float(f1_score(y, pred, zero_division=0)),
         "roc_auc": float(roc_auc_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
+        "pr_auc": float(average_precision_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
         "false_positive_rate": float(fp / max(fp + tn, 1)),
         "false_negative_rate": float(fn / max(fn + tp, 1)),
         "true_positives": int(tp), "true_negatives": int(tn),
@@ -33,3 +41,10 @@ def metrics_by_group(df, scores, group_col: str, threshold: float = .5) -> dict:
 def threshold_sweep(y_true, scores, thresholds: list[float] | None = None) -> list[dict]:
     thresholds = thresholds or [round(x, 2) for x in np.arange(.30, .91, .05)]
     return [{"threshold": t, **binary_metrics(y_true, scores, t)} for t in thresholds]
+
+
+def select_operating_threshold(y_true, scores, max_false_positive_rate: float = .02) -> dict:
+    candidates = threshold_sweep(y_true, scores, [round(x, 2) for x in np.arange(.20, .91, .01)])
+    feasible = [item for item in candidates if item["false_positive_rate"] <= max_false_positive_rate]
+    pool = feasible or candidates
+    return max(pool, key=lambda item: (item["f1"], item["recall"], -item["false_positive_rate"]))
