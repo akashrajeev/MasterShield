@@ -6,7 +6,7 @@ MasterShield uses a transparent multi-signal detector over synthetic payment tel
 
 ## Input
 
-The feature pipeline produces transaction, behavioral, identity/device, contextual and network features from synthetic event history.
+The feature pipeline produces transaction, behavioral, identity/device, contextual and network features from synthetic event history. Ground-truth labels and attack/scenario metadata are excluded from the model feature matrix and retained only for evaluation.
 
 ### Transaction features
 
@@ -24,8 +24,8 @@ The feature pipeline produces transaction, behavioral, identity/device, contextu
 - normal daily transaction volume
 - geo distance
 - cross-rail activity
-- scenario stage
 - amount/behavior interaction
+- velocity and account-age flags
 
 ### Identity, device and context
 
@@ -48,6 +48,10 @@ The feature pipeline produces transaction, behavioral, identity/device, contextu
 - network concentration
 - graph risk
 
+## Leakage prevention
+
+The detector explicitly rejects feature matrices containing ground-truth or attack metadata such as `ground_truth`, `attack_id`, `attack_family`, `scenario_id`, `scenario_stage`, and `multi_stage_scenario`. This prevents a label-bearing scenario field from making fraud perfectly separable by construction.
+
 ## Detector
 
 The baseline classifier is `HistGradientBoostingClassifier` from scikit-learn. It is paired with `IsolationForest` and a causal network-risk signal.
@@ -56,7 +60,7 @@ The model stores anomaly calibration bounds learned from the training population
 
 ## Risk fusion
 
-The current detector version is `4.2` and uses:
+The current detector version is `4.3` and uses:
 
 ```text
 risk = 0.68 * supervised_probability
@@ -125,6 +129,21 @@ The final test population remains unchanged throughout those rounds.
 The detector exposes model feature importance plus transaction-specific signal strengths. The Investigation UI can use these values to explain why a synthetic event was assigned a particular risk score.
 
 This is feature-based attribution, not a claim of full SHAP methodology.
+
+## Re-running results
+
+After changing the feature schema or detector version, run:
+
+```bash
+$env:PYTHONPATH="."  # Windows PowerShell
+python scripts/train_model.py
+python scripts/evaluate_model.py
+python scripts/evaluate_unseen.py
+python scripts/benchmark.py
+python scripts/run_closed_loop.py
+```
+
+Use the resulting `ml/results/*.json` files as the source for final benchmark claims. Do not reuse older benchmark artifacts generated with a previous feature schema.
 
 ## What the benchmark does not claim
 
