@@ -2,49 +2,52 @@
 
 MasterShield is a defensive AI payment-security research platform for the Mastercard Innovation Challenge @ GFF 2026.
 
-The repository is intentionally split into a frontend and a reproducible research backend. The backend lives under `backend/` and implements the three challenge pillars:
+The repository is intentionally split into:
 
-`IDENTIFY -> GENERATE -> DEFEND`
+- the presentation frontend under the existing Next.js application
+- a reproducible research backend under `backend/`
 
-followed by adversarial evaluation and hardening.
+The backend implements the complete challenge loop:
+
+`IDENTIFY -> GENERATE -> DEFEND -> EVALUATE -> ADAPT`
+
+## Backend status
+
+The backend branch contains:
+
+- 120 synthetic defensive attack scenarios across 12 families
+- deterministic synthetic payment-world generation
+- account, merchant, device and beneficiary relationships
+- causal transaction-history and network features
+- attack-specific and multi-stage scenario generation
+- gradient-boosting + anomaly + graph risk detection
+- precision/recall/F1/ROC-AUC/PR-AUC/FPR/FNR evaluation
+- threshold analysis and operating-threshold selection
+- unseen-family generalization evaluation
+- adversarial detector-blind-spot search
+- train-on-failures hardening with an untouched final test set
+- transaction-level model explanations
+- FastAPI service and OpenAPI documentation
+- SQLite experiment persistence
+- reproducible CLI scripts and CI tests
+
+All attack and transaction data are synthetic. No real payments, credentials or external financial systems are used.
 
 ## Backend quickstart
 
 ```bash
 python -m venv .venv
-# macOS/Linux: source .venv/bin/activate
-# Windows: .venv\\Scripts\\activate
+
+# macOS/Linux
+source .venv/bin/activate
+
+# Windows
+# .venv\\Scripts\\activate
+
 pip install -r backend/requirements.txt
-```
 
-Generate a reproducible synthetic dataset:
-
-```bash
-python scripts/generate_data.py --events 10000 --seed 829134
-```
-
-Train the detector and save the model artifact:
-
-```bash
-python scripts/train_model.py
-```
-
-Run held-out evaluation:
-
-```bash
-python scripts/evaluate_model.py
-```
-
-Evaluate generalization to unseen attack families:
-
-```bash
-python scripts/evaluate_unseen.py
-```
-
-Run the red-team/blue-team hardening loop:
-
-```bash
-python scripts/run_closed_loop.py
+python scripts/validate_catalog.py
+python scripts/run_all.py
 ```
 
 Start the API:
@@ -53,24 +56,10 @@ Start the API:
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Swagger/OpenAPI is available at `/docs`.
-
-## Backend design
-
-- `data/attacks/attacks.json`: canonical machine-readable threat catalog.
-- `backend/app/simulation`: synthetic financial-world primitives.
-- `backend/app/generators`: reusable attack-family generators.
-- `backend/app/features`: behavioral, transaction and graph/network features.
-- `backend/app/detection`: trainable tabular + anomaly risk detector and explanations.
-- `backend/app/evaluation`: metrics and grouped evaluation.
-- `backend/app/adversarial`: synthetic detector-blind-spot search and train-on-failures hardening.
-- `backend/app/storage`: lightweight SQLite experiment registry.
-- `backend/app/api`: stable API contract for later frontend integration.
+OpenAPI/Swagger: `http://localhost:8000/docs`
 
 ## Reproducibility
 
-Experiments use explicit random seeds. Model training, evaluation and adversarial rounds can be regenerated locally from the scripts above. The final evaluation protocol keeps an untouched test split separate from the red-team search pool.
+Experiments use explicit random seeds. The repository does not commit generated model binaries or the local SQLite experiment database; these are recreated from the versioned code and commands above.
 
-## Safety
-
-All attacks, entities, transactions and network relationships are synthetic. The project does not execute real payment attacks, collect credentials, interact with financial institutions, or generate operational phishing/deepfake tooling. It simulates observable fraud telemetry for defensive research and model evaluation.
+See `backend/README.md` for the architecture, experiment protocol and API contract.
