@@ -11,19 +11,23 @@ from sklearn.metrics import (
 )
 
 
+def _bounded(value: float) -> float:
+    return float(np.clip(value, 0.0, 1.0))
+
+
 def binary_metrics(y_true, scores, threshold: float = .5) -> dict:
     y = np.asarray(y_true).astype(int)
     s = np.asarray(scores, dtype=float)
     pred = (s >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
     return {
-        "precision": float(precision_score(y, pred, zero_division=0)),
-        "recall": float(recall_score(y, pred, zero_division=0)),
-        "f1": float(f1_score(y, pred, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
-        "pr_auc": float(average_precision_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
-        "false_positive_rate": float(fp / max(fp + tn, 1)),
-        "false_negative_rate": float(fn / max(fn + tp, 1)),
+        "precision": _bounded(precision_score(y, pred, zero_division=0)),
+        "recall": _bounded(recall_score(y, pred, zero_division=0)),
+        "f1": _bounded(f1_score(y, pred, zero_division=0)),
+        "roc_auc": _bounded(roc_auc_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
+        "pr_auc": _bounded(average_precision_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
+        "false_positive_rate": _bounded(fp / max(fp + tn, 1)),
+        "false_negative_rate": _bounded(fn / max(fn + tp, 1)),
         "true_positives": int(tp), "true_negatives": int(tn),
         "false_positives": int(fp), "false_negatives": int(fn),
     }
