@@ -2,7 +2,7 @@
 
 ## AI Defense Lab for Payment Security
 
-MasterShield is a defensive AI payment-security research platform for the Mastercard Innovation Challenge @ GFF 2026. It implements the challenge as a closed-loop laboratory rather than as a static fraud classifier:
+MasterShield is a defensive AI payment-security research platform for the Mastercard Innovation Challenge @ GFF 2026. It implements the challenge as a closed loop:
 
 ```text
 IDENTIFY → GENERATE → DEFEND → EVALUATE → ADAPT
@@ -10,146 +10,42 @@ IDENTIFY → GENERATE → DEFEND → EVALUATE → ADAPT
                          └── HARDER ATTACKS
 ```
 
-The web prototype provides the interactive security-operations interface. The Python backend provides the canonical attack catalog, synthetic payment simulation, machine-learning detector, evaluation framework and adversarial hardening engine.
+The web prototype is the interactive research/SOC interface. The Python backend is the canonical source for attack intelligence, synthetic payment simulation, feature engineering, machine-learning detection, evaluation and adversarial hardening.
 
-> **Safety:** MasterShield is a synthetic defensive research environment. It does not execute real payment attacks, collect credentials, contact victims, interact with banks or merchants, or create operational phishing/deepfake infrastructure.
-
----
-
-## What the repository contains
-
-| Layer | Purpose | Main location |
-|---|---|---|
-| Web prototype | Interactive research/SOC interface | `app/`, `components/` |
-| API client | Frontend/backend contract | `lib/api/` |
-| Attack intelligence | 120 attack definitions and discovery | `data/attacks/`, `backend/app/identify/` |
-| Synthetic world | Accounts, merchants, devices, beneficiaries | `backend/app/simulation/` |
-| Attack generation | Family-specific and multi-stage simulation | `backend/app/generators/` |
-| Features | Transaction, behavioral, identity, context, network | `backend/app/features/` |
-| Detection | Supervised + anomaly + graph risk | `backend/app/detection/` |
-| Evaluation | Metrics, thresholds, grouped benchmarks | `backend/app/evaluation/` |
-| Adversarial loop | Hard-variant search and hardening | `backend/app/adversarial/` |
-| Storage | Experiment metadata | `backend/app/storage/` |
-| Reproducibility | CLI experiments and validation | `scripts/` |
-| Documentation | Architecture and methodology | `docs/` |
+> **Safety:** all entities, transactions and attack scenarios are synthetic defensive research data. The system does not execute real payment attacks, collect credentials, contact victims, interact with banks/merchants, or create operational phishing/deepfake infrastructure.
 
 ---
 
-## Challenge coverage
+## What is implemented
 
-### 1. Identify
+| Pillar | Implementation |
+|---|---|
+| **Identify** | 120 structured synthetic defensive attack scenarios across 12 families plus safe composite-threat discovery |
+| **Generate** | Seeded synthetic customers, accounts, merchants, devices, beneficiaries and transaction histories across multiple payment rails |
+| **Defend** | Detector v4.3: supervised classifier + anomaly detector + network/graph risk fusion |
+| **Evaluate** | Precision, Recall, F1, ROC-AUC, PR-AUC, FPR/FNR, confusion matrix, threshold sweeps, group and unseen-family evaluation |
+| **Adapt** | Red-team search for low-risk fraud variants, bounded mutation and iterative detector hardening on an untouched test set |
 
-The canonical catalog currently contains **120 structured synthetic defensive research attack definitions across 12 attack families**. Each definition includes:
+### Canonical attack catalog
 
-- stable attack ID
-- attack family
-- safe scenario description
-- severity
-- detection difficulty
-- payment-rail coverage
-- AI-capability metadata
-- observable signals
-- defense mappings
-- novelty score
-- evidence status
-- generator mapping
+`data/attacks/attacks.json` is the single operational source of truth.
 
-The catalog is validated by automated tests and by `scripts/validate_catalog.py`.
+It contains exactly **120 scenarios across 12 families**, with 10 scenarios per family:
 
-The Identify layer also contains a safe composite-threat discovery mechanism. It recombines existing threat attributes into non-operational hypotheses for further simulation and defensive research.
+1. identity-kyc
+2. social-engineering
+3. account-takeover
+4. merchant-commerce
+5. transaction-evasion
+6. mule-aml
+7. payment-instrument
+8. api-digital
+9. behavioral-device
+10. cross-channel
+11. agentic-fraud
+12. synthetic-content
 
-### 2. Generate
-
-MasterShield creates a deterministic synthetic payment world containing:
-
-- customers
-- accounts
-- merchants
-- devices
-- beneficiaries
-- transaction histories
-- cross-channel scenarios
-- synthetic network relationships
-
-The transaction generator models these payment rails:
-
-- UPI
-- CARD
-- WALLET
-- IMPS
-- NEFT
-- RTGS
-- BNPL
-- CROSS_BORDER
-
-Generated events contain ground-truth labels and contextual telemetry. One-hour and 24-hour velocities are derived from prior events, account baselines drive amount/behavioral deviation, and network signals are derived from relationships visible up to the event.
-
-Attack definitions map to reusable generator families, so 120 catalog entries can create large populations of synthetic attack instances without hard-coding millions of records.
-
-### 3. Defend
-
-The current detector combines:
-
-1. `HistGradientBoostingClassifier` supervised fraud probability
-2. `IsolationForest` behavioral anomaly score
-3. synthetic causal network/graph risk
-
-The current detector version is `4.2`.
-
-The fused score is:
-
-```text
-risk = 0.68 * supervised_probability
-     + 0.17 * anomaly_score
-     + 0.15 * graph_signal
-```
-
-The score is bounded to `[0, 1]` and mapped to:
-
-```text
-ALLOW
-MONITOR
-STEP_UP
-BLOCK_REVIEW
-```
-
-The detector also returns feature-based explanations for transaction investigation.
-
-### 4. Evaluate
-
-The evaluation framework reports:
-
-- Precision
-- Recall
-- F1
-- ROC-AUC
-- PR-AUC
-- False-positive rate
-- False-negative rate
-- TP/TN/FP/FN
-- threshold sweeps
-- operating-threshold selection
-- performance by attack
-- performance by family
-- performance by payment rail
-- performance by difficulty
-- inference latency
-
-### 5. Adapt
-
-The red team searches the **synthetic feature space** for fraud variants that receive low detector risk. Hard examples are fed back into detector training.
-
-The hardening implementation keeps these populations separate:
-
-```text
-TRAINING DATA
-     │
-     ├──────────────► RED-TEAM SEARCH / AUGMENTATION
-     │
-     └──────────────► UNTOUCHED FINAL TEST
-```
-
-This prevents the hardening experiment from simply evaluating on examples that were used to search or train the model.
+Attack records contain stable IDs, severity, difficulty, payment rails, AI capability metadata, observable signals, defense mappings, novelty and generator mapping.
 
 ---
 
@@ -159,16 +55,16 @@ This prevents the hardening experiment from simply evaluating on examples that w
 flowchart TD
     UI[Next.js Web Prototype]
     API[FastAPI Research API]
-    CAT[Attack Intelligence\n120 attacks / 12 families]
+    CAT[Canonical Attack Catalog\n120 attacks / 12 families]
     DISC[Safe Threat Discovery]
     WORLD[Synthetic Payment World]
-    GEN[Attack Scenario Generators]
-    FEAT[Feature Pipeline]
-    MODEL[Supervised Detector]
-    ANOM[Anomaly Detector]
+    GEN[Scenario Generators]
+    FEAT[Leakage-safe Feature Pipeline]
+    MODEL[HistGradientBoosting]
+    ANOM[IsolationForest]
     GRAPH[Network / Graph Risk]
     FUSE[Risk Fusion]
-    DEC[Risk Decision]
+    DEC[Decision Policy]
     EVAL[Evaluation Engine]
     ADV[Red-Team Search]
     HARD[Blue-Team Hardening]
@@ -176,16 +72,9 @@ flowchart TD
 
     UI --> API
     API --> CAT
-    API --> WORLD
-    API --> FEAT
-    API --> MODEL
-    API --> EVAL
-    API --> ADV
-    API --> HARD
-    API --> DB
-
-    CAT --> GEN
     CAT --> DISC
+    CAT --> GEN
+    API --> WORLD
     WORLD --> GEN
     GEN --> FEAT
     FEAT --> MODEL
@@ -199,9 +88,122 @@ flowchart TD
     EVAL --> ADV
     ADV --> HARD
     HARD --> MODEL
+    API --> DB
+    EVAL --> DB
+    HARD --> DB
 ```
 
-For the detailed architecture and module responsibilities, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+For module responsibilities and the full data/control flow see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
+## Synthetic generation
+
+MasterShield generates a complete synthetic payment world rather than only producing isolated fraud rows.
+
+Entities include:
+
+- customers
+- accounts
+- merchants
+- devices
+- beneficiaries
+- transaction histories
+
+Modeled payment rails include UPI, cards, wallets, IMPS, NEFT, RTGS, BNPL and cross-border activity.
+
+Generated transactions retain ground-truth and attack metadata for evaluation, while the model feature pipeline removes those label-bearing fields before training or inference.
+
+The generator derives behavioral, transaction, identity/device, contextual and network signals from the synthetic history. A fixed seed produces reproducible output.
+
+---
+
+## Detection architecture
+
+Detector version: **4.3**
+
+```text
+Synthetic transaction telemetry
+              ↓
+      Feature extraction
+              ↓
+ ┌────────────┬─────────────┬──────────────┐
+ │ supervised │ anomaly     │ graph risk   │
+ │ classifier │ detector    │              │
+ └────────────┴─────────────┴──────────────┘
+              ↓
+         Risk fusion
+              ↓
+       Decision threshold
+              ↓
+  ALLOW / MONITOR / STEP_UP / BLOCK_REVIEW
+```
+
+The fused risk score is:
+
+```text
+risk = 0.68 * supervised_probability
+     + 0.17 * anomaly_score
+     + 0.15 * graph_signal
+```
+
+The detector rejects feature matrices containing ground-truth or attack metadata such as `ground_truth`, `attack_id`, `attack_family`, `scenario_id`, `scenario_stage` and related fields.
+
+The saved model also records its feature schema and refuses stale or incompatible artifacts.
+
+---
+
+## Evaluation methodology
+
+MasterShield evaluates more than one aggregate score.
+
+Metrics include:
+
+- Precision
+- Recall
+- F1
+- ROC-AUC
+- PR-AUC
+- False-positive rate
+- False-negative rate
+- TP/TN/FP/FN
+
+Results can be grouped by attack, family, difficulty and payment rail.
+
+### Unseen-family evaluation
+
+The unseen-family experiment withholds complete attack families from training and evaluates them separately under challenging synthetic conditions. The latest recorded leakage-safe run produced an **F1 of approximately 0.975** on the held-out synthetic families.
+
+### Standard synthetic benchmark
+
+The standard controlled distribution can be highly separable. Near-perfect scores on that benchmark are treated as a **synthetic-distribution diagnostic**, not as production fraud performance.
+
+The final competition narrative should therefore emphasize held-out-family generalization and adversarial robustness, while reporting the standard benchmark with its synthetic-data limitation explicitly stated.
+
+---
+
+## Adaptive red-team / blue-team loop
+
+The hardening experiment keeps an outer split:
+
+```text
+60% TRAINING
+20% RED-TEAM SEARCH
+20% UNTOUCHED TEST
+```
+
+The training population receives an additional internal calibration split used only to select an operating threshold subject to a false-positive-rate constraint.
+
+Each hardening round:
+
+1. fit a detector on training data;
+2. search synthetic fraud mutations for low-risk cases;
+3. add selected hard cases to training;
+4. recalibrate the threshold using training-only data;
+5. refit the detector;
+6. evaluate only on the untouched test population.
+
+This is a defensive robustness experiment over synthetic telemetry. It does not interact with live payment systems.
 
 ---
 
@@ -209,49 +211,36 @@ For the detailed architecture and module responsibilities, see [`docs/ARCHITECTU
 
 ```text
 MasterShield/
-│
-├── app/                         # Next.js App Router pages
-│   ├── attack-library/          # Attack intelligence UI
-│   ├── simulator/               # Red-team simulator UI
-│   ├── generated-data/          # Synthetic event workspace
-│   ├── detection-lab/           # Model/evaluation UI
-│   ├── investigation/           # Transaction explanation UI
-│   ├── closed-loop/             # Adversarial hardening UI
-│   ├── novelty-engine/          # Threat discovery UI
-│   └── demo/                    # Guided judge walkthrough
-│
-├── components/                  # Reusable frontend components
-├── lib/api/                     # Typed FastAPI client
+├── app/                         # Next.js routes
+│   ├── attack-library/
+│   ├── simulator/
+│   ├── generated-data/
+│   ├── detection-lab/
+│   ├── investigation/
+│   ├── closed-loop/
+│   ├── novelty-engine/
+│   └── demo/
+├── components/                  # Frontend UI
+├── lib/api/                     # FastAPI client boundary
 ├── types/                       # Frontend domain types
-│
 ├── backend/
 │   ├── app/
-│   │   ├── api/                 # FastAPI route layer
-│   │   ├── identify/            # Catalog + discovery
-│   │   ├── simulation/          # Synthetic entity world
-│   │   ├── generators/          # Scenario generation
-│   │   ├── features/            # Model features + graph signals
-│   │   ├── detection/           # Detector + serving + explanations
-│   │   ├── evaluation/          # Metrics and grouping
-│   │   ├── adversarial/         # Red-team search + hardening
-│   │   ├── storage/             # SQLite metadata store
-│   │   └── schemas.py            # API/domain validation
-│   └── tests/                   # Backend tests
-│
+│   │   ├── identify/
+│   │   ├── simulation/
+│   │   ├── generators/
+│   │   ├── features/
+│   │   ├── detection/
+│   │   ├── evaluation/
+│   │   ├── adversarial/
+│   │   ├── storage/
+│   │   └── api/
+│   └── tests/
 ├── data/
 │   └── attacks/
-│       └── attacks.json         # Canonical attack catalog
-│
-├── scripts/                     # Reproducible experiments
-├── ml/                           # Local model/result artifacts
-├── docs/                         # Architecture and methodology
-│   ├── ARCHITECTURE.md
-│   ├── CHALLENGE_MAPPING.md
-│   ├── MODEL_AND_EVALUATION.md
-│   └── REPRODUCIBILITY.md
-│
-├── docker-compose.yml
-├── render.yaml
+│       └── attacks.json         # canonical 120-scenario catalog
+├── scripts/                     # reproducible experiments
+├── docs/                        # architecture/methodology/API docs
+├── render.yaml                  # optional deployment config
 └── README.md
 ```
 
@@ -259,22 +248,16 @@ MasterShield/
 
 ## Quick start
 
-### Prerequisites
-
-- Python 3.12 recommended
-- Node.js compatible with the repository's Next.js version
-- Git
-
 ### Backend
 
 ```bash
 python -m venv .venv
 
+# Windows PowerShell
+.venv\\Scripts\\Activate.ps1
+
 # macOS/Linux
 source .venv/bin/activate
-
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
 
 pip install -r backend/requirements.txt
 ```
@@ -282,22 +265,22 @@ pip install -r backend/requirements.txt
 Validate the catalog:
 
 ```bash
-python scripts/validate_catalog.py
+PYTHONPATH=. python scripts/validate_catalog.py
 ```
 
-Run the backend experiment pipeline:
+Run the full experiment pipeline:
 
 ```bash
-python scripts/run_all.py
+PYTHONPATH=. python scripts/run_all.py
 ```
 
-Start the API:
+Start FastAPI:
 
 ```bash
-uvicorn backend.app.main:app --reload --port 8000
+PYTHONPATH=. uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Open the API documentation at:
+Open:
 
 ```text
 http://localhost:8000/docs
@@ -324,16 +307,14 @@ Open:
 http://localhost:3000
 ```
 
-The frontend's operational API boundary is `lib/api/`. It requests attack data and simulation/detection results from FastAPI rather than treating the old local TypeScript simulation data as the source of truth.
-
 ---
 
 ## Reproducible experiments
 
-### Generate synthetic data
+Generate synthetic data:
 
 ```bash
-python scripts/generate_data.py \
+PYTHONPATH=. python scripts/generate_data.py \
   --events 10000 \
   --seed 829134 \
   --difficulty very-high \
@@ -341,55 +322,34 @@ python scripts/generate_data.py \
   --noise medium
 ```
 
-### Train the detector
+Train:
 
 ```bash
-python scripts/train_model.py
+PYTHONPATH=. python scripts/train_model.py
 ```
 
-Training writes local artifacts such as `ml/models/detector.joblib`, model metadata and feature schema. These generated files are intentionally ignored by git.
-
-### Standard evaluation
+Evaluate:
 
 ```bash
-python scripts/evaluate_model.py
+PYTHONPATH=. python scripts/evaluate_model.py
+PYTHONPATH=. python scripts/evaluate_unseen.py
+PYTHONPATH=. python scripts/benchmark.py
+PYTHONPATH=. python scripts/run_closed_loop.py
 ```
 
-### Unseen-family evaluation
+Or run the complete sequence:
 
 ```bash
-python scripts/evaluate_unseen.py
+PYTHONPATH=. python scripts/run_all.py
 ```
 
-This withholds complete attack families from training instead of performing only a random row split.
+Generated model/data artifacts are local outputs and are ignored by git.
 
-### Difficulty benchmark
-
-```bash
-python scripts/benchmark.py
-```
-
-### Closed-loop adversarial experiment
-
-```bash
-python scripts/run_closed_loop.py
-```
-
-### Run everything
-
-```bash
-python scripts/run_all.py
-```
-
-For the full methodology, see [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) and [`docs/MODEL_AND_EVALUATION.md`](docs/MODEL_AND_EVALUATION.md).
+For the detailed experiment protocol see [`docs/MODEL_AND_EVALUATION.md`](docs/MODEL_AND_EVALUATION.md) and [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md).
 
 ---
 
-## API reference
-
-The FastAPI service exposes:
-
-### Health and catalog
+## API surface
 
 ```text
 GET  /health
@@ -397,57 +357,37 @@ GET  /api/catalog/summary
 GET  /api/catalog/discover
 GET  /api/attacks
 GET  /api/attacks/{attack_id}
-```
 
-### Simulation
-
-```text
 POST /api/simulate
 GET  /api/simulations/{simulation_id}
 GET  /api/simulations/{simulation_id}/events
 GET  /api/simulations/{simulation_id}/results
 GET  /api/simulations/{simulation_id}/rounds
-```
 
-### Detection and experiments
-
-```text
 POST /api/detect
 POST /api/predict
 GET  /api/experiments/{experiment_id}
 GET  /api/models/current
-```
 
-### Investigation
+GET  /api/transactions/{transaction_id}
+GET  /api/transactions/{transaction_id}/assessment
 
-```text
-GET /api/transactions/{transaction_id}
-GET /api/transactions/{transaction_id}/assessment
-```
-
-### Adversarial loop
-
-```text
 POST /api/adversarial/search
 POST /api/adversarial/harden
 ```
 
-The schemas in `backend/app/schemas.py` validate simulation, detection and prediction requests.
+See [`docs/API.md`](docs/API.md) for request/response contracts.
 
 ---
 
 ## Web prototype flow
 
-The frontend presents the system in this order:
-
 ```text
 Attack Library
       ↓
-Select / inspect attack
+Attack Detail
       ↓
 Red Team Simulator
-      ↓
-Generate synthetic events
       ↓
 Generated Data
       ↓
@@ -458,202 +398,27 @@ Investigation
 Closed Loop
       ↓
 Novelty Engine
+      ↓
+Judge Demo
 ```
 
-The dedicated Judge Demo presents the challenge story in a shorter guided sequence.
+The Judge Demo presents a guided version of:
 
----
-
-## Synthetic data model
-
-### Entities
-
-The simulator creates synthetic records for:
-
-- customers
-- accounts
-- merchants
-- devices
-- beneficiaries
-
-### Transaction telemetry
-
-Representative generated fields include:
-
-- transaction ID
-- timestamp
-- account/customer IDs
-- merchant/beneficiary/device IDs
-- amount
-- payment rail
-- account age
-- baseline daily volume
-- beneficiary age
-- device trust
-- merchant risk
-- one-hour and 24-hour velocity
-- geographic deviation
-- behavioral deviation
-- identity consistency
-- urgency/context fields
-- scenario and stage metadata
-- ground-truth fraud label
-- attack ID/family metadata
-
-### Network telemetry
-
-The feature layer derives causal relationship signals such as:
-
-- device account reuse
-- account/beneficiary degree
-- beneficiary fan-out
-- account outflow
-- beneficiary inflow
-- counterparty count
-- network concentration
-- composite graph risk
-
----
-
-## Attack generator design
-
-MasterShield does not implement one hand-written generator for every catalog entry. Instead:
-
-```text
-120+ attack definitions
-       ↓
-~generator families
-       ↓
-parameterized synthetic scenarios
-       ↓
-large populations of attack instances
-```
-
-Attack definitions influence the generator through:
-
-- generator family
-- observable signals
-- novelty
-- severity
-- difficulty
-- rail coverage
-- AI capability metadata
-
-This provides scale while keeping the simulation engine maintainable.
-
----
-
-## Detection design
-
-The current detector is deliberately transparent and modular.
-
-```text
-Raw synthetic events
-        ↓
-Feature extraction
-        ↓
- ┌─────────────┬──────────────┬─────────────┐
- │ Supervised  │ Behavioral   │ Network     │
- │ classifier  │ anomaly      │ graph risk  │
- └─────────────┴──────────────┴─────────────┘
-        ↓
-Risk fusion
-        ↓
-Decision policy
-        ↓
-Explanation
-```
-
-The model uses feature-based attribution for transaction explanations. The project does not claim that these explanations are full SHAP values.
-
----
-
-## Evaluation methodology
-
-A strong result in MasterShield is not defined only by an aggregate F1 score.
-
-We evaluate by:
-
-- attack
-- family
-- difficulty
-- payment rail
-- threshold
-- known vs unseen attack families
-- static vs adaptive/adversarial conditions
-
-The repository also measures inference latency, but latency numbers should always be interpreted as local prototype measurements, not a production payment SLA.
-
----
-
-## Adversarial hardening methodology
-
-The closed loop is a defensive robustness experiment over synthetic telemetry:
-
-```text
-1. Train baseline detector
-2. Hold a red-team search population aside
-3. Keep an untouched final test population
-4. Generate bounded synthetic fraud mutations
-5. Score mutations with the detector
-6. Select difficult low-risk fraud variants
-7. Add selected variants to training
-8. Retrain detector
-9. Re-evaluate on untouched test data
-10. Repeat for multiple rounds
-```
-
-The objective is to expose weaknesses in the synthetic detector and quantify how the detector changes after hard-case augmentation.
-
----
-
-## Safety and research boundary
-
-MasterShield uses simulated payment entities and events only.
-
-It does not:
-
-- perform real transfers
-- interact with financial institutions
-- collect or test real credentials
-- contact victims
-- generate operational phishing campaigns
-- deploy deepfakes
-- exploit third-party systems
-- access private payment data
-
-GenAI-powered fraud is represented at the level of threat concepts and observable telemetry needed to evaluate defenses.
-
----
-
-## Production-readiness boundary
-
-This project is a hackathon/research prototype, not a production payment-fraud service.
-
-A production deployment would additionally require:
-
-- authenticated and authorized API access
-- secrets management
-- managed durable storage
-- privacy and data-governance controls
-- model governance and monitoring
-- high-availability inference
-- distributed workload management for very large simulations
-- audit logging
-- rate limiting
-- service-level monitoring
-- organization-specific fraud data and calibration
-
-The challenge submission should present these as next-step engineering requirements rather than implying they are already implemented.
+`IDENTIFY → GENERATE → DEFEND → EVALUATE → ADAPT`
 
 ---
 
 ## Documentation map
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and module responsibilities
-- [`docs/CHALLENGE_MAPPING.md`](docs/CHALLENGE_MAPPING.md) — exact mapping from challenge criteria to implementation
-- [`docs/MODEL_AND_EVALUATION.md`](docs/MODEL_AND_EVALUATION.md) — detector and evaluation methodology
-- [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) — setup, experiments and reproducibility
-- [`DEPLOYMENT.md`](DEPLOYMENT.md) — optional deployment instructions
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and component responsibilities
+- [`docs/API.md`](docs/API.md) — API routes and data contracts
+- [`docs/MODEL_AND_EVALUATION.md`](docs/MODEL_AND_EVALUATION.md) — detector, leakage controls and evaluation methodology
+- [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) — environment and experiment commands
+- [`docs/CHALLENGE_MAPPING.md`](docs/CHALLENGE_MAPPING.md) — mapping from competition requirements to implementation
+- [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md) — final submission checklist
 
+---
 
+## Production boundary
+
+This is a hackathon/research prototype. A production payment-security deployment would additionally require authenticated access, secrets management, managed storage, privacy/data governance, model governance, high availability, audit logging, rate limiting and organization-specific fraud calibration.
