@@ -6,9 +6,6 @@ import pandas as pd
 from .transaction import generate_transactions
 from ..identify.catalog import load_attacks
 
-# Generator-family priors. Individual attacks additionally use their
-# observable_signals and novelty score so the catalog maps to differentiated
-# synthetic telemetry rather than one generic fraud profile.
 PROFILES: dict[str, dict[str, float]] = {
     "identity": {"behavioral": .28, "merchant": .18, "beneficiary": .35, "device": .88, "velocity": 1.10, "geo": 1.25, "content": .10},
     "social": {"behavioral": .42, "merchant": .12, "beneficiary": .48, "device": .95, "velocity": 1.20, "geo": 1.10, "content": .78},
@@ -25,26 +22,26 @@ PROFILES: dict[str, dict[str, float]] = {
 }
 
 SIGNAL_EFFECTS = {
-    "velocity": ("velocity_1h", "velocity_24h", 1.35),
-    "behavioral_deviation": ("behavioral_deviation", None, .50),
-    "transaction_deviation": ("behavioral_deviation", None, .38),
-    "device_trust": ("device_trust_score", None, -.28),
-    "device_reuse": ("device_reuse_score", None, .25),
-    "geo_distance": ("geo_distance_km", None, 1.40),
-    "account_age": ("account_age_days", None, -.20),
-    "merchant_risk": ("merchant_risk", None, .38),
-    "beneficiary_novelty": ("beneficiary_age_days", None, -.42),
-    "recipient_novelty": ("beneficiary_age_days", None, -.32),
-    "network_risk": ("network_risk", None, .40),
-    "network_fan_in": ("beneficiary_fanout_score", None, .30),
-    "network_fan_out": ("beneficiary_fanout_score", None, .36),
-    "identity_consistency": ("identity_consistency", None, -.45),
-    "identity_overlap": ("network_risk", None, .25),
-    "cross_rail_activity": ("cross_rail_activity", None, .65),
-    "urgency": ("urgency_score", None, .55),
-    "approval_path_change": ("approval_path_change", None, .65),
-    "content_risk": ("content_risk", None, .72),
-    "recovery_change": ("approval_path_change", None, .40),
+    "velocity": ("velocity_1h", 1.35),
+    "behavioral_deviation": ("behavioral_deviation", .50),
+    "transaction_deviation": ("behavioral_deviation", .38),
+    "device_trust": ("device_trust_score", -.28),
+    "device_reuse": ("device_reuse_score", .25),
+    "geo_distance": ("geo_distance_km", 1.40),
+    "account_age": ("account_age_days", -.20),
+    "merchant_risk": ("merchant_risk", .38),
+    "beneficiary_novelty": ("beneficiary_age_days", -.42),
+    "recipient_novelty": ("beneficiary_age_days", -.32),
+    "network_risk": ("network_risk", .40),
+    "network_fan_in": ("beneficiary_fanout_score", .30),
+    "network_fan_out": ("beneficiary_fanout_score", .36),
+    "identity_consistency": ("identity_consistency", -.45),
+    "identity_overlap": ("network_risk", .25),
+    "cross_rail_activity": ("cross_rail_activity", .65),
+    "urgency": ("urgency_score", .55),
+    "approval_path_change": ("approval_path_change", .65),
+    "content_risk": ("content_risk", .72),
+    "recovery_change": ("approval_path_change", .40),
 }
 
 
@@ -53,34 +50,50 @@ def _profile(generator_id: str) -> dict[str, float]:
 
 
 def _apply_signal_specificity(df: pd.DataFrame, idx: pd.Index, attack, rng: np.random.Generator) -> None:
-    signals = set(attack.observable_signals)
+    if attack is None:
+        return
     specificity = .55 + .45 * float(attack.novelty_score)
-    for signal in signals:
+    for signal in set(attack.observable_signals):
         effect = SIGNAL_EFFECTS.get(signal)
         if not effect:
             continue
-        column, _, magnitude = effect
+        column, magnitude = effect
         if column not in df.columns:
             continue
         strength = rng.uniform(.45, 1.0, len(idx)) * specificity * magnitude
-        if column in {"device_trust_score", "identity_consistency", "account_age_days", "beneficiary_age_days"}:
-            if column == "device_trust_score":
-                df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1)
-            elif column == "identity_consistency":
-                df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1)
-            elif column == "account_age_days":
-                df.loc[idx, column] = np.maximum(1, df.loc[idx, column] * (1.0 + strength))
-            else:
-                df.loc[idx, column] = np.maximum(0, df.loc[idx, column] * (1.0 + strength))
-        elif column in {"geo_distance_km", "behavioral_deviation", "merchant_risk", "device_reuse_score", "beneficiary_fanout_score", "network_risk", "urgency_score", "content_risk"}:
-            df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1 if column != "geo_distance_km" else None)
+        if column == "device_trust_score":
+            df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1)
+        elif column == "identity_consistency":
+            df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1)
+        elif column in {"account_age_days", "beneficiary_age_days"}:
+            df.loc[idx, column] = np.maximum(0, df.loc[idx, column] * (1.0 + strength))
+        elif column == "geo_distance_km":
+            df.loc[idx, column] = np.maximum(0, df.loc[idx, column] + strength * 30)
         elif column == "cross_rail_activity":
             df.loc[idx, column] = (df.loc[idx, column].to_numpy() + (rng.random(len(idx)) < min(.95, abs(magnitude) * specificity))).astype(int)
         elif column == "approval_path_change":
             df.loc[idx, column] = np.maximum(df.loc[idx, column], (rng.random(len(idx)) < min(.95, abs(magnitude) * specificity)).astype(int))
         elif column == "velocity_1h":
-            df.loc[idx, column] = np.maximum(0, np.round(df.loc[idx, column] * (1 + strength)))
-            df.loc[idx, "velocity_24h"] = np.maximum(df.loc[idx, "velocity_1h"], np.round(df.loc[idx, "velocity_24h"] * (1 + strength * .65)))
+            factor = 1 + np.maximum(strength, 0)
+            df.loc[idx, column] = np.maximum(0, np.round(df.loc[idx, column] * factor))
+            df.loc[idx, "velocity_24h"] = np.maximum(df.loc[idx, "velocity_1h"], np.round(df.loc[idx, "velocity_24h"] * (1 + np.maximum(strength, 0) * .65)))
+        elif column in {"behavioral_deviation", "merchant_risk", "device_reuse_score", "beneficiary_fanout_score", "network_risk", "urgency_score", "content_risk"}:
+            df.loc[idx, column] = np.clip(df.loc[idx, column] + strength, 0, 1)
+
+
+def _impose_network_patterns(df: pd.DataFrame, idx: pd.Index, generator: str, rng: np.random.Generator) -> None:
+    if len(idx) == 0:
+        return
+    if generator == "aml":
+        # Concentrate fraud into a small beneficiary pool to create synthetic fan-in/fan-out.
+        pool_size = max(3, min(12, len(idx) // 8 or 3))
+        pool = rng.choice(df.loc[idx, "beneficiary_id"].to_numpy(), size=pool_size, replace=False if len(idx) >= pool_size else True)
+        df.loc[idx, "beneficiary_id"] = rng.choice(pool, len(idx), replace=True)
+    elif generator in {"identity", "ato", "autonomous"}:
+        # Shared device clusters create relationship evidence without changing external systems.
+        pool_size = max(2, min(8, len(idx) // 12 or 2))
+        pool = rng.choice(df.loc[idx, "device_id"].to_numpy(), size=pool_size, replace=False if len(idx) >= pool_size else True)
+        df.loc[idx, "device_id"] = rng.choice(pool, len(idx), replace=True)
 
 
 def generate_attack_scenario(
@@ -92,7 +105,6 @@ def generate_attack_scenario(
     adaptation: str = "static",
     noise: str = "medium",
 ) -> pd.DataFrame:
-    """Generate deterministic synthetic payment telemetry for defensive evaluation."""
     attacks = {a.id: a for a in load_attacks()}
     df = generate_transactions(events, seed, fraud_rate, attack_ids)
     rng = np.random.default_rng(seed + 17)
@@ -133,9 +145,9 @@ def generate_attack_scenario(
         df.loc[idx, "approval_path_change"] = (rng.random(len(idx)) < (0.20 + .60 * (generator in {"social", "ato", "cross-channel", "autonomous"}))).astype(int)
         df.loc[idx, "cross_rail_activity"] = (rng.random(len(idx)) < (.62 if generator in {"cross-channel", "autonomous", "aml"} else .06)).astype(int)
 
+        _impose_network_patterns(df, idx, generator, rng)
         _apply_signal_specificity(df, idx, attack, rng)
 
-        # Multi-event campaign linkage for cross-channel/autonomous attacks.
         if generator in {"cross-channel", "autonomous"}:
             idx_list = list(idx)
             cursor = 0
@@ -156,14 +168,13 @@ def generate_attack_scenario(
         for col in ["behavioral_deviation", "merchant_risk", "content_risk"]:
             df.loc[fraud_idx, col] = np.clip(df.loc[fraud_idx, col] + rng.normal(0, .04, len(fraud_idx)), 0, 1)
     elif difficulty == "very-high":
+        noise_scale = .06 if noise == "low" else .09 if noise == "medium" else .13
         for col in ["behavioral_deviation", "merchant_risk", "device_trust_score", "content_risk"]:
-            noise_scale = .06 if noise == "low" else .09 if noise == "medium" else .13
             df.loc[fraud_idx, col] = np.clip(df.loc[fraud_idx, col] + rng.normal(0, noise_scale, len(fraud_idx)), 0, 1)
         df.loc[fraud_idx, "velocity_1h"] = np.maximum(0, np.round(df.loc[fraud_idx, "velocity_1h"] * rng.uniform(.70, 1.02, len(fraud_idx))))
         df.loc[fraud_idx, "urgency_score"] = np.clip(df.loc[fraud_idx, "urgency_score"] - rng.uniform(0, .15, len(fraud_idx)), 0, 1)
 
     if adaptation in {"adaptive", "adversarial"}:
-        # Adaptive mode increases overlap with benign behavior while preserving attack labels.
         blend = .08 if adaptation == "adaptive" else .14
         for col in ["behavioral_deviation", "merchant_risk", "content_risk"]:
             benign = df.loc[df["ground_truth"].eq(0), col]
