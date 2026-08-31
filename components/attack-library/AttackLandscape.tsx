@@ -33,15 +33,11 @@ export function AttackLandscape({
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const [hover, setHover] = useState<Attack | null>(null);
 
-  // Pick representative sample across categories for visualization
   const shown = useMemo(() => {
     if (attacks.length <= 24) return attacks;
-    // ensure at least 1-2 from each category
     const map = new Map<string, Attack>();
     attacks.forEach(a => {
-      if (!map.has(a.category) || map.size < 24) {
-        map.set(a.id, a);
-      }
+      if (!map.has(a.category) || map.size < 24) map.set(a.id, a);
     });
     return Array.from(map.values()).slice(0, 24);
   }, [attacks]);
@@ -79,7 +75,7 @@ export function AttackLandscape({
       </div>
 
       <div className="graph-tools">
-        <button onClick={() => setScale(s => Math.min(1.5, s + 0.1)}>+</button>
+        <button onClick={() => setScale(s => Math.min(1.5, s + 0.1))}>+</button>
         <button onClick={() => setScale(s => Math.max(0.6, s - 0.1))}>−</button>
         <button onClick={() => { setScale(1); setOffset({ x: 0, y: 0 }); }}>Reset</button>
       </div>
