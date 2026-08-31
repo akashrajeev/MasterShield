@@ -23,13 +23,8 @@ def _cumulative_sum(df: pd.DataFrame, group_col: str, value_col: str) -> pd.Seri
     return df.groupby(group_col, sort=False)[value_col].cumsum().astype(float)
 
 
-def _share_by_group(df: pd.DataFrame, group_col: str, value_col: str) -> pd.Series:
-    total = df.groupby(group_col, sort=False)[value_col].transform("sum")
-    return (df[value_col] / (total + 1e-9)).clip(0, 1)
-
-
 def derive_network_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute relationship features using only information available at each event time."""
+    """Compute synthetic relationship and AML-flow signals causally."""
     out = df.copy()
     if "timestamp" in out.columns:
         out = out.sort_values("timestamp").reset_index(drop=True)
@@ -47,16 +42,16 @@ def derive_network_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out["account_outflow"] = _cumulative_sum(out, "account_id", "amount")
     out["beneficiary_inflow"] = _cumulative_sum(out, "beneficiary_id", "amount")
-    out["account_to_beneficiary_share"] = _share_by_group(out, "account_id", "amount")
-    out["beneficiary_amount_share"] = _share_by_group(out, "beneficiary_id", "amount")
-    out["counterparty_count"] = out.groupby("account_id", sort=False)["beneficiary_id"].transform(lambda s: s.duplicated(keep="first").rsub(1).groupby(s).cumsum() + 1)
+    out["account_to_beneficiary_share"] = (out["amount"] / (out["account_outflow"] + 1e-9)).clip(0, 1)
+    out["beneficiary_amount_share"] = (out["amount"] / (out["beneficiary_inflow"] + 1e-9)).clip(0, 1)
+    out["counterparty_count"] = out["account_beneficiary_degree"]
     out["network_amount_concentration"] = out["beneficiary_amount_share"]
 
     out["network_risk"] = (
-        0.22 * out["device_reuse_score"].clip(0, 1)
-        + 0.22 * out["beneficiary_fanout_score"].clip(0, 1)
+        0.20 * out["device_reuse_score"].clip(0, 1)
+        + 0.24 * out["beneficiary_fanout_score"].clip(0, 1)
         + 0.20 * out["network_concentration"].clip(0, 1)
-        + 0.18 * out["account_to_beneficiary_share"].clip(0, 1)
-        + 0.18 * out["beneficiary_amount_share"].clip(0, 1)
+        + 0.18 * (1 - out["beneficiary_amount_share"]).clip(0, 1)
+        + 0.18 * (1 / (out["counterparty_count"] + 1)).clip(0, 1)
     ).clip(0, 1)
     return out
