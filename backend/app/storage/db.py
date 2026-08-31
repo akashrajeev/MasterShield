@@ -103,11 +103,32 @@ def get_experiment(experiment_id: str, path: Path | None = None) -> dict[str, An
     return result
 
 
+def get_latest_metrics(simulation_id: str, path: Path | None = None) -> dict[str, Any] | None:
+    conn = connect(path)
+    row = conn.execute(
+        "SELECT * FROM experiment_metrics WHERE simulation_id=? ORDER BY created_at DESC LIMIT 1",
+        (simulation_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    result = dict(row)
+    result["metrics"] = json.loads(result.pop("metrics_json"))
+    return result
+
+
 def get_rounds(simulation_id: str, path: Path | None = None) -> list[dict[str, Any]]:
     conn = connect(path)
-    rows = conn.execute("SELECT * FROM closed_loop_rounds WHERE simulation_id=? ORDER BY round_number", (simulation_id,)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM closed_loop_rounds WHERE simulation_id=? ORDER BY round_number",
+        (simulation_id,),
+    ).fetchall()
     conn.close()
     return [
-        {**dict(row), "attack_ids": json.loads(row["attack_ids_json"]), "metrics": json.loads(row["metrics_json"])}
+        {
+            **dict(row),
+            "attack_ids": json.loads(row["attack_ids_json"]),
+            "metrics": json.loads(row["metrics_json"]),
+        }
         for row in rows
     ]
