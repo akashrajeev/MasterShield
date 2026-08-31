@@ -52,6 +52,13 @@ def _profile(generator_id: str) -> dict[str, float]:
     return PROFILES.get(normalized, PROFILES["transaction"])
 
 
+def _set_series_values(df: pd.DataFrame, idx: pd.Index, column: str, values) -> None:
+    """Assign numeric values through a float-backed Series to avoid pandas dtype warnings."""
+    series = df[column].astype(np.float64).copy()
+    series.loc[idx] = np.asarray(values, dtype=np.float64)
+    df[column] = series
+
+
 def _apply_signal_specificity(df: pd.DataFrame, idx: pd.Index, attack, rng: np.random.Generator) -> None:
     if attack is None:
         return
@@ -65,23 +72,28 @@ def _apply_signal_specificity(df: pd.DataFrame, idx: pd.Index, attack, rng: np.r
             continue
         strength = rng.uniform(.45, 1.0, len(idx)) * specificity * magnitude
         if column == "device_trust_score":
-            df.loc[idx, column] = np.clip(df.loc[idx, column].astype(float) + strength, 0, 1)
+            _set_series_values(df, idx, column, np.clip(df.loc[idx, column].astype(float) + strength, 0, 1))
         elif column == "identity_consistency":
-            df.loc[idx, column] = np.clip(df.loc[idx, column].astype(float) + strength, 0, 1)
+            _set_series_values(df, idx, column, np.clip(df.loc[idx, column].astype(float) + strength, 0, 1))
         elif column in {"account_age_days", "beneficiary_age_days"}:
-            df.loc[idx, column] = np.maximum(0, df.loc[idx, column].astype(float) * (1.0 + strength))
+            _set_series_values(df, idx, column, np.maximum(0, df.loc[idx, column].astype(float) * (1.0 + strength)))
         elif column == "geo_distance_km":
-            df.loc[idx, column] = np.maximum(0, df.loc[idx, column].astype(float) + strength * 30)
+            _set_series_values(df, idx, column, np.maximum(0, df.loc[idx, column].astype(float) + strength * 30))
         elif column == "cross_rail_activity":
             df.loc[idx, column] = (df.loc[idx, column].to_numpy() + (rng.random(len(idx)) < min(.95, abs(magnitude) * specificity))).astype(int)
         elif column == "approval_path_change":
-            df.loc[idx, column] = np.maximum(df.loc[idx, column], (rng.random(len(idx)) < min(.95, abs(magnitude) * specificity)).astype(int))
+            df.loc[idx, column] = np.maximum(df.loc[idx, column].to_numpy(dtype=int), (rng.random(len(idx)) < min(.95, abs(magnitude) * specificity)).astype(int))
         elif column == "velocity_1h":
             factor = 1 + np.maximum(strength, 0)
-            df.loc[idx, column] = np.maximum(0, np.round(df.loc[idx, column] * factor))
-            df.loc[idx, "velocity_24h"] = np.maximum(df.loc[idx, "velocity_1h"], np.round(df.loc[idx, "velocity_24h"] * (1 + np.maximum(strength, 0) * .65)))
+            updated_v1 = np.maximum(0, np.round(df.loc[idx, column].to_numpy(dtype=float) * factor))
+            _set_series_values(df, idx, column, updated_v1)
+            updated_v24 = np.maximum(
+                df.loc[idx, "velocity_1h"].to_numpy(dtype=float),
+                np.round(df.loc[idx, "velocity_24h"].to_numpy(dtype=float) * (1 + np.maximum(strength, 0) * .65)),
+            )
+            _set_series_values(df, idx, "velocity_24h", updated_v24)
         elif column in {"behavioral_deviation", "merchant_risk", "device_reuse_score", "beneficiary_fanout_score", "network_risk", "urgency_score", "content_risk"}:
-            df.loc[idx, column] = np.clip(df.loc[idx, column].astype(float) + strength, 0, 1)
+            _set_series_values(df, idx, column, np.clip(df.loc[idx, column].astype(float) + strength, 0, 1))
 
 
 def _impose_network_patterns(df: pd.DataFrame, idx: pd.Index, generator: str, rng: np.random.Generator) -> None:
@@ -101,11 +113,9 @@ def generate_attack_scenario(events: int, seed: int, attack_ids: list[str], frau
     """Generate deterministic synthetic payment telemetry for defensive evaluation."""
     attacks = {a.id: a for a in load_attacks()}
     df = generate_transactions(events, seed, fraud_rate, attack_ids)
-    # Cast mutable continuous signals before attack injection so pandas never assigns
-    # float perturbations into integer-backed columns.
     for column in ["amount", "velocity_1h", "velocity_24h", "geo_distance_km", "beneficiary_age_days", "device_trust_score", "behavioral_deviation", "merchant_risk"]:
         if column in df.columns:
-            df[column] = df[column].astype(float)
+            df[column] = df[column].astype(np.float64)
     rng = np.random.default_rng(seed + 17)
     fraud_idx = df.index[df["ground_truth"].eq(1)]
 
@@ -135,15 +145,15 @@ def generate_attack_scenario(events: int, seed: int, attack_ids: list[str], frau
         if attack is not None:
             df.loc[idx, "attack_family"] = attack.family; df.loc[idx, "attack_difficulty"] = attack.difficulty
             df.loc[idx, "attack_novelty"] = float(attack.novelty_score); df.loc[idx, "attack_severity"] = attack.severity; df.loc[idx, "attack_name"] = attack.name
-        df.loc[idx, "behavioral_deviation"] = np.clip(df.loc[idx, "behavioral_deviation"].astype(float) + p["behavioral"] * strength, 0, 1)
-        df.loc[idx, "merchant_risk"] = np.clip(df.loc[idx, "merchant_risk"].astype(float) + p["merchant"] * strength, 0, 1)
-        max_age = max(2, int(30 * p["beneficiary"])); df.loc[idx, "beneficiary_age_days"] = np.minimum(df.loc[idx, "beneficiary_age_days"].astype(float), rng.integers(0, max_age, len(idx)))
-        df.loc[idx, "device_trust_score"] = np.clip(df.loc[idx, "device_trust_score"].astype(float) * rng.uniform(p["device"], 1.0, len(idx)), 0, 1)
-        df.loc[idx, "velocity_1h"] = np.maximum(0, np.round(df.loc[idx, "velocity_1h"] * p["velocity"] + rng.poisson(.7, len(idx))))
-        df.loc[idx, "velocity_24h"] = np.maximum(df.loc[idx, "velocity_1h"], np.round(df.loc[idx, "velocity_24h"] * p["velocity"] + rng.poisson(2.0, len(idx))))
-        df.loc[idx, "geo_distance_km"] = np.maximum(0, df.loc[idx, "geo_distance_km"] * p["geo"])
-        df.loc[idx, "content_risk"] = np.clip(df.loc[idx, "content_risk"].astype(float) + p["content"] * strength, 0, 1)
-        df.loc[idx, "urgency_score"] = np.clip(df.loc[idx, "urgency_score"].astype(float) + (.75 if generator == "social" else .18) * strength, 0, 1)
+        _set_series_values(df, idx, "behavioral_deviation", np.clip(df.loc[idx, "behavioral_deviation"].astype(float) + p["behavioral"] * strength, 0, 1))
+        _set_series_values(df, idx, "merchant_risk", np.clip(df.loc[idx, "merchant_risk"].astype(float) + p["merchant"] * strength, 0, 1))
+        _set_series_values(df, idx, "beneficiary_age_days", np.minimum(df.loc[idx, "beneficiary_age_days"].astype(float), rng.integers(0, max(2, int(30 * p["beneficiary"])), len(idx))))
+        _set_series_values(df, idx, "device_trust_score", np.clip(df.loc[idx, "device_trust_score"].astype(float) * rng.uniform(p["device"], 1.0, len(idx)), 0, 1))
+        _set_series_values(df, idx, "velocity_1h", np.maximum(0, np.round(df.loc[idx, "velocity_1h"].to_numpy(dtype=float) * p["velocity"] + rng.poisson(.7, len(idx)))))
+        _set_series_values(df, idx, "velocity_24h", np.maximum(df.loc[idx, "velocity_1h"].to_numpy(dtype=float), np.round(df.loc[idx, "velocity_24h"].to_numpy(dtype=float) * p["velocity"] + rng.poisson(2.0, len(idx)))))
+        _set_series_values(df, idx, "geo_distance_km", np.maximum(0, df.loc[idx, "geo_distance_km"].to_numpy(dtype=float) * p["geo"]))
+        _set_series_values(df, idx, "content_risk", np.clip(df.loc[idx, "content_risk"].astype(float) + p["content"] * strength, 0, 1))
+        _set_series_values(df, idx, "urgency_score", np.clip(df.loc[idx, "urgency_score"].astype(float) + (.75 if generator == "social" else .18) * strength, 0, 1))
         df.loc[idx, "approval_path_change"] = (rng.random(len(idx)) < (0.20 + .60 * (generator in {"social", "ato", "cross-channel", "cross_channel", "autonomous"}))).astype(int)
         df.loc[idx, "cross_rail_activity"] = (rng.random(len(idx)) < (.62 if generator in {"cross-channel", "cross_channel", "autonomous", "aml"} else .06)).astype(int)
         _impose_network_patterns(df, idx, generator, rng)
@@ -151,28 +161,35 @@ def generate_attack_scenario(events: int, seed: int, attack_ids: list[str], frau
         if generator in {"cross-channel", "cross_channel", "autonomous"}:
             idx_list = list(idx); cursor = 0
             while cursor < len(idx_list):
-                remaining = len(idx_list) - cursor; width = 1 if remaining == 1 else int(rng.integers(2, min(4, remaining) + 1)); members = idx_list[cursor: cursor + width]
-                sid = f"SCN-{seed}-{int(members[0]):06d}"; df.loc[members, "scenario_id"] = sid; df.loc[members, "scenario_stage"] = np.arange(1, len(members) + 1); cursor += width
+                remaining = len(idx_list) - cursor
+                width = 1 if remaining == 1 else int(rng.integers(2, min(4, remaining) + 1))
+                members = idx_list[cursor: cursor + width]
+                sid = f"SCN-{seed}-{int(members[0]):06d}"
+                df.loc[members, "scenario_id"] = sid
+                df.loc[members, "scenario_stage"] = np.arange(1, len(members) + 1)
+                cursor += width
         else:
-            df.loc[idx, "scenario_id"] = [f"SCN-{seed}-{int(i):06d}" for i in idx]; df.loc[idx, "scenario_stage"] = 2
+            df.loc[idx, "scenario_id"] = [f"SCN-{seed}-{int(i):06d}" for i in idx]
+            df.loc[idx, "scenario_stage"] = 2
 
     if difficulty == "low":
-        df.loc[fraud_idx, "behavioral_deviation"] = np.clip(df.loc[fraud_idx, "behavioral_deviation"].astype(float) + .08, 0, 1)
+        _set_series_values(df, fraud_idx, "behavioral_deviation", np.clip(df.loc[fraud_idx, "behavioral_deviation"].astype(float) + .08, 0, 1))
     elif difficulty == "high":
         for col in ["behavioral_deviation", "merchant_risk", "content_risk"]:
-            df.loc[fraud_idx, col] = np.clip(df.loc[fraud_idx, col].astype(float) + rng.normal(0, .04, len(fraud_idx)), 0, 1)
+            _set_series_values(df, fraud_idx, col, np.clip(df.loc[fraud_idx, col].astype(float) + rng.normal(0, .04, len(fraud_idx)), 0, 1))
     elif difficulty == "very-high":
         noise_scale = .06 if noise == "low" else .09 if noise == "medium" else .13
         for col in ["behavioral_deviation", "merchant_risk", "device_trust_score", "content_risk"]:
-            df.loc[fraud_idx, col] = np.clip(df.loc[fraud_idx, col].astype(float) + rng.normal(0, noise_scale, len(fraud_idx)), 0, 1)
-        df.loc[fraud_idx, "velocity_1h"] = np.maximum(0, np.round(df.loc[fraud_idx, "velocity_1h"] * rng.uniform(.70, 1.02, len(fraud_idx))))
-        df.loc[fraud_idx, "urgency_score"] = np.clip(df.loc[fraud_idx, "urgency_score"].astype(float) - rng.uniform(0, .15, len(fraud_idx)), 0, 1)
+            _set_series_values(df, fraud_idx, col, np.clip(df.loc[fraud_idx, col].astype(float) + rng.normal(0, noise_scale, len(fraud_idx)), 0, 1))
+        _set_series_values(df, fraud_idx, "velocity_1h", np.maximum(0, np.round(df.loc[fraud_idx, "velocity_1h"].astype(float) * rng.uniform(.70, 1.02, len(fraud_idx)))))
+        _set_series_values(df, fraud_idx, "urgency_score", np.clip(df.loc[fraud_idx, "urgency_score"].astype(float) - rng.uniform(0, .15, len(fraud_idx)), 0, 1))
 
     if adaptation in {"adaptive", "adversarial"}:
         blend = .08 if adaptation == "adaptive" else .14
         for col in ["behavioral_deviation", "merchant_risk", "content_risk"]:
-            benign = df.loc[df["ground_truth"].eq(0), col]; target = float(benign.median()) if len(benign) else .35
-            df.loc[fraud_idx, col] = (1 - blend) * df.loc[fraud_idx, col].astype(float) + blend * target
-        df.loc[fraud_idx, "velocity_1h"] = np.maximum(0, np.round(df.loc[fraud_idx, "velocity_1h"] * (1 - blend / 2)))
+            benign = df.loc[df["ground_truth"].eq(0), col]
+            target = float(benign.median()) if len(benign) else .35
+            _set_series_values(df, fraud_idx, col, (1 - blend) * df.loc[fraud_idx, col].astype(float) + blend * target)
+        _set_series_values(df, fraud_idx, "velocity_1h", np.maximum(0, np.round(df.loc[fraud_idx, "velocity_1h"].astype(float) * (1 - blend / 2))))
 
     return df
