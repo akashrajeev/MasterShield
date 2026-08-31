@@ -2,7 +2,7 @@
 
 ## Overview
 
-MasterShield uses a transparent multi-signal detector over synthetic payment telemetry. It is intentionally modular so the project can compare feature groups and attack conditions rather than treating a single score as proof of security.
+MasterShield uses a transparent multi-signal detector over synthetic payment telemetry. It is intentionally modular so the project can compare feature groups and attack conditions rather than treating a single aggregate score as proof of security.
 
 ## Input
 
@@ -50,7 +50,7 @@ The feature pipeline produces transaction, behavioral, identity/device, contextu
 
 ## Leakage prevention
 
-The detector explicitly rejects feature matrices containing ground-truth or attack metadata such as `ground_truth`, `attack_id`, `attack_family`, `scenario_id`, `scenario_stage`, and `multi_stage_scenario`. This prevents a label-bearing scenario field from making fraud perfectly separable by construction.
+The detector explicitly rejects feature matrices containing ground-truth or attack metadata such as `ground_truth`, `attack_id`, `attack_family`, `scenario_id`, `scenario_stage`, and `multi_stage_scenario`. The generator may retain those fields for evaluation and investigation, but `build_features()` drops them before model training/inference.
 
 ## Detector
 
@@ -58,9 +58,9 @@ The baseline classifier is `HistGradientBoostingClassifier` from scikit-learn. I
 
 The model stores anomaly calibration bounds learned from the training population. This avoids rescaling anomaly scores against each new batch at inference time.
 
-## Risk fusion
+The current detector version is `4.3`.
 
-The current detector version is `4.3` and uses:
+## Risk fusion
 
 ```text
 risk = 0.68 * supervised_probability
@@ -116,13 +116,38 @@ This helps identify blind spots instead of hiding them inside one aggregate scor
 
 `scripts/evaluate_unseen.py` withholds two complete attack families from the training data and tests only on those families. The test population uses very-high difficulty and adversarial adaptation settings.
 
-This is a synthetic generalization experiment. It should be described as such; it is not evidence that the model will generalize to every real-world fraud family.
+This is the strongest generalization-oriented result in the repository because entire attack families are withheld from training. It remains a synthetic experiment and is not evidence that the model will generalize to every real-world fraud family.
+
+## Interpreting the standard synthetic benchmark
+
+The standard generated distribution is intentionally controlled and therefore can be highly separable. A perfect or near-perfect score on that benchmark is a **synthetic-distribution separation diagnostic**, not a claim of production fraud performance.
+
+For the final competition write-up, use the unseen-family result and closed-loop robustness results as the primary evidence of generalization/adaptation. Report the standard 50k-event benchmark as a controlled reference and explicitly note when synthetic features make the task easier than a live payment environment.
 
 ## Adversarial hardening
 
-`backend/app/adversarial/hardening.py` partitions the synthetic dataset into training, red-team search and untouched final-test populations. The red team searches feature-space mutations for fraud cases assigned low detector risk. Selected hard cases are added to training for subsequent rounds.
+`backend/app/adversarial/hardening.py` maintains an outer split:
 
-The final test population remains unchanged throughout those rounds.
+```text
+60% training
+20% red-team search
+20% untouched final test
+```
+
+The hardening workflow takes an additional calibration split from the training population only. That calibration set is used to select the operating threshold under a maximum false-positive-rate constraint. The final model is then refit on the complete current training population, while the untouched test population remains isolated.
+
+Each hardening round:
+
+1. scores synthetic fraud candidates;
+2. searches bounded mutations for low-risk variants;
+3. adds selected hard cases to the training population;
+4. recalibrates the operating threshold using training-only data;
+5. refits the detector;
+6. evaluates only on the untouched test population.
+
+This prevents threshold tuning or training from using the final test population.
+
+The hardening result should be interpreted as a robustness experiment. The goal is to improve or maintain detection on previously untouched adversarial-style synthetic data, not to manufacture a higher score by evaluating on the same hard examples used for augmentation.
 
 ## Explainability
 
@@ -143,10 +168,10 @@ python scripts/benchmark.py
 python scripts/run_closed_loop.py
 ```
 
-Use the resulting `ml/results/*.json` files as the source for final benchmark claims. Do not reuse older benchmark artifacts generated with a previous feature schema.
+Use the resulting `ml/results/*.json` files as the source for final benchmark claims. Do not reuse older artifacts generated with a previous feature schema.
 
 ## What the benchmark does not claim
 
 The project is intentionally a research prototype. Synthetic data and a trained prototype classifier cannot establish production-grade fraud performance. Results are meaningful only within the documented synthetic distributions, generator assumptions, software environment and experiment seeds.
 
-Any final write-up should report measured results generated by the repository rather than placeholder dashboard numbers.
+Any final write-up should report measured results generated by the repository and label the evaluation population and protocol next to each metric.
