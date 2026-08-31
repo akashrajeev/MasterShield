@@ -8,9 +8,11 @@ from ..evaluation.metrics import binary_metrics, select_operating_threshold
 from ..features.pipeline import build_features
 from .search import search_hard_variants
 
+CALIBRATION_MAX_FPR = 0.05
+
 
 def _fit_calibrated_model(dataset: pd.DataFrame, seed: int) -> tuple[Detector, float]:
-    """Fit on the full training population while selecting an operating threshold on a held-out calibration split."""
+    """Fit on the full training population while selecting a training-only operating threshold."""
     fit, calibration = train_test_split(
         dataset,
         test_size=.20,
@@ -20,14 +22,14 @@ def _fit_calibrated_model(dataset: pd.DataFrame, seed: int) -> tuple[Detector, f
     model = Detector().fit(build_features(fit), fit["ground_truth"])
     calibration_scores = model.predict_scores(build_features(calibration))
     operating = select_operating_threshold(
-        calibration["ground_truth"], calibration_scores, max_false_positive_rate=.02
+        calibration["ground_truth"], calibration_scores, max_false_positive_rate=CALIBRATION_MAX_FPR
     )
     final_model = Detector().fit(build_features(dataset), dataset["ground_truth"])
     return final_model, float(operating["threshold"])
 
 
 def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
-    """Run red-team search with calibrated operating points and an untouched final test set."""
+    """Run red-team search with training-only threshold calibration and an untouched final test set."""
     train, remainder = train_test_split(
         dataset,
         test_size=.40,
@@ -48,6 +50,7 @@ def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
         "round": 0,
         "metrics": baseline,
         "operating_threshold": threshold,
+        "calibration_max_fpr": CALIBRATION_MAX_FPR,
         "adversarial_examples": 0,
     }]
     augmented = train.copy()
@@ -70,6 +73,7 @@ def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
             "round": round_no,
             "metrics": metrics,
             "operating_threshold": threshold,
+            "calibration_max_fpr": CALIBRATION_MAX_FPR,
             "adversarial_examples": len(hard),
             "search": search_history,
         })
