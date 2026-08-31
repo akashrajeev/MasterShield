@@ -6,7 +6,7 @@ This document explains how to regenerate MasterShield's synthetic data, model ar
 
 Recommended:
 
-- Python 3.11+
+- Python 3.12
 - Node.js compatible with the repository's Next.js version
 - Git
 
@@ -21,12 +21,12 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Windows PowerShell
-.venv\Scripts\Activate.ps1
+.venv\\Scripts\\Activate.ps1
 
 pip install -r backend/requirements.txt
 ```
 
-Because the scripts import the repository's `backend` package, run them from the repository root with the root directory on `PYTHONPATH`:
+Run commands from the repository root. The repository workflows set `PYTHONPATH=.` so the `backend` package resolves consistently.
 
 ```bash
 # macOS/Linux
@@ -42,11 +42,9 @@ $env:PYTHONPATH = "."
 python scripts/validate_catalog.py
 ```
 
-The canonical catalog contains 120 synthetic defensive scenarios across 12 families. Validation checks IDs, generator mappings and supported generator families.
+The canonical catalog contains exactly 120 synthetic defensive scenarios across 12 families. Validation checks IDs, generator mappings and supported generator families.
 
 ## 4. Generate synthetic data
-
-Example:
 
 ```bash
 python scripts/generate_data.py \
@@ -65,17 +63,17 @@ The generator is deterministic for a given configuration and seed. Data is synth
 python scripts/train_model.py
 ```
 
-The current detector is leakage-safe: attack IDs, labels, scenario IDs/stages and other ground-truth metadata are excluded from model features. The script trains the detector, selects an operating threshold under a false-positive constraint, and writes local artifacts under `ml/models/` and `ml/results/`.
+Detector v4.3 explicitly rejects attack and ground-truth metadata from the model feature matrix. Training selects an operating threshold on a validation split under a false-positive-rate constraint and records the feature schema and model metadata under `ml/models/`.
 
-The model artifact should be regenerated after changes to the feature schema or detector version.
-
-## 6. Evaluate on a held-out test population
+## 6. Evaluate the standard distribution
 
 ```bash
 python scripts/evaluate_model.py
 ```
 
-The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, a threshold sweep and measured inference time.
+The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, threshold sweeps and measured inference time.
+
+Because the synthetic generator can make fraud highly separable, the standard result is a controlled distribution/separation diagnostic. It must not be presented as production fraud performance.
 
 ## 7. Evaluate unseen attack families
 
@@ -83,23 +81,33 @@ The output contains overall metrics plus breakdowns by attack, family, payment r
 python scripts/evaluate_unseen.py
 ```
 
-This experiment withholds complete attack families from training and tests on those families separately. It is stronger evidence of generalization than randomly splitting nearly identical rows.
+This withholds complete attack families from training and tests on those families separately under challenging synthetic conditions. Use this as the primary generalization-oriented result in the competition narrative.
 
-## 8. Run the benchmark
+## 8. Run the difficulty benchmark
 
 ```bash
 python scripts/benchmark.py
 ```
 
-The benchmark evaluates low, medium, high and very-high difficulty settings.
+The benchmark compares low, medium, high and very-high synthetic difficulty settings.
 
-## 9. Run the adversarial loop
+## 9. Run the adversarial hardening experiment
 
 ```bash
 python scripts/run_closed_loop.py
 ```
 
-The hardening implementation maintains separate training, red-team search/augmentation and untouched test populations.
+The hardening protocol maintains an outer 60/20/20 split:
+
+```text
+60% training
+20% red-team search
+20% untouched final test
+```
+
+An additional calibration split is taken from the training population only. It selects the operating threshold under a maximum false-positive-rate constraint, then the detector is refit on the current training population and evaluated only on the untouched test set.
+
+Each round searches bounded synthetic mutations for low-risk fraud cases, adds selected hard cases to training, recalibrates the threshold using training-only data and re-evaluates the untouched test population.
 
 ## 10. Run everything
 
@@ -107,12 +115,12 @@ The hardening implementation maintains separate training, red-team search/augmen
 python scripts/run_all.py
 ```
 
-This executes catalog validation, data generation, model training, standard evaluation, unseen-family evaluation, difficulty benchmarking and closed-loop robustness testing in sequence.
+This executes catalog validation, data generation, model training, standard evaluation, unseen-family evaluation, difficulty benchmarking and closed-loop robustness testing.
 
 ## 11. Run the API
 
 ```bash
-uvicorn backend.app.main:app --reload --port 8000
+PYTHONPATH=. uvicorn backend.app.main:app --reload --port 8000
 ```
 
 Then open:
@@ -123,7 +131,7 @@ http://localhost:8000/docs
 
 ## 12. Run the frontend against the backend
 
-Create `.env.local` from `.env.example`:
+Create `.env.local`:
 
 ```text
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -136,14 +144,14 @@ npm ci
 npm run dev
 ```
 
-The frontend uses `lib/api/` as its backend boundary.
+The frontend uses `lib/api/` as its operational backend boundary.
 
 ## 13. Reproducibility checklist
 
-For a documented experiment record, capture:
+Record:
 
 - Git commit SHA
-- Python version
+- Python and Node versions
 - dependency environment
 - seed
 - attack IDs/families
@@ -155,8 +163,9 @@ For a documented experiment record, capture:
 - detector version
 - feature schema
 - operating threshold
-- evaluation metrics
+- evaluation population/protocol
+- final metrics
 
 ## 14. Why seeds matter
 
-The simulator, attack assignment, network shaping and mutation search use seeded pseudo-random generation. Reusing the same seed and configuration should reproduce the same experiment distribution and transaction IDs. Floating-point and library-version differences can still produce small numerical differences, so reproducibility means deterministic experiment generation under the documented environment rather than byte-for-byte guarantees across arbitrary library versions.
+The simulator, attack assignment, network shaping and mutation search use seeded pseudo-random generation. Reusing the same seed and configuration should reproduce the same experiment distribution and transaction IDs. Floating-point and dependency-version differences can still cause small numerical changes, so reproducibility means deterministic experiment generation under the documented environment rather than byte-for-byte guarantees across arbitrary library versions.
