@@ -30,7 +30,7 @@ flowchart TD
     WORLD --> ENT[Customers / Accounts / Merchants / Devices / Beneficiaries]
     WORLD --> TXN[Time-ordered Synthetic Transactions]
     TXN --> SCN[Attack Scenarios / Multi-stage Campaigns]
-    SCN --> FEAT[Feature Pipeline]
+    SCN --> FEAT[Leakage-safe Feature Pipeline]
 
     FEAT --> TAB[Supervised Model]
     FEAT --> ANOM[Isolation Forest]
@@ -67,8 +67,8 @@ backend/app/generators/    Attack-aware scenario and transaction generation
 backend/app/features/      Model features, behavioral features, graph signals
 backend/app/detection/     Model training, inference, fusion and explanations
 backend/app/evaluation/    Metrics, threshold sweeps and grouped evaluation
-backend/app/adversarial/  Defensive mutation, hard-variant search and hardening
-backend/app/storage/      SQLite experiment registry
+backend/app/adversarial/   Defensive mutation, hard-variant search and hardening
+backend/app/storage/       SQLite experiment registry
 backend/tests/             Backend tests
 
 data/attacks/             Canonical attack catalog
@@ -137,13 +137,13 @@ Supported families include identity/KYC, social engineering, account takeover, m
 
 ### 5.4 Multi-stage campaigns
 
-Cross-channel and autonomous scenarios may share a `scenario_id` and ordered `scenario_stage` values so a payment can be evaluated as part of a broader synthetic campaign rather than as an isolated row.
+Cross-channel and autonomous scenarios may share a `scenario_id` and ordered `scenario_stage` values so a payment can be evaluated as part of a broader synthetic campaign rather than as an isolated row. These metadata fields are retained for evaluation/context but are deliberately excluded from the detector feature matrix.
 
 ## 6. Feature layer
 
 `backend/app/features/pipeline.py` converts raw synthetic events into the model matrix.
 
-Feature groups include:
+The current feature schema contains observable payment, behavioral, identity/device/context, and causal network signals. Ground-truth and attack metadata are explicitly excluded.
 
 ### Transaction
 
@@ -152,15 +152,15 @@ Feature groups include:
 - one-hour and 24-hour velocity
 - beneficiary age
 - account age
-- rail
+- normal daily transaction volume
 
 ### Behavioral
 
 - behavioral deviation
-- normal daily transaction volume
 - geographic distance
 - cross-rail activity
-- multi-stage scenario indicator
+- amount/behavior interaction
+- velocity and account-age flags
 
 ### Identity/device/context
 
@@ -193,7 +193,7 @@ The detector is implemented in `backend/app/detection/model.py`.
 
 ### Supervised model
 
-A `HistGradientBoostingClassifier` learns a fraud probability from the feature matrix.
+A `HistGradientBoostingClassifier` learns a fraud probability from the leakage-safe feature matrix.
 
 ### Behavioral anomaly model
 
@@ -280,8 +280,6 @@ Training population
 
 The detector is retrained with selected hard variants, but the final test population remains untouched throughout the hardening rounds.
 
-This provides a meaningful before/after robustness experiment without evaluating the hardened model on the data used to generate the hard examples.
-
 ## 10. API layer
 
 FastAPI is the stable boundary between the frontend and research engine.
@@ -313,7 +311,7 @@ POST /api/adversarial/search
 POST /api/adversarial/harden
 ```
 
-The API returns JSON-safe values and validates all public request parameters with Pydantic models.
+The API returns JSON-safe values and validates public request parameters with Pydantic models.
 
 ## 11. Experiment persistence
 
@@ -330,13 +328,13 @@ The actual database is ignored by git; it is regenerated locally.
 
 ## 12. Frontend boundary
 
-The Next.js application uses `lib/api/` as the only operational client boundary. `NEXT_PUBLIC_API_URL` selects the backend.
+The Next.js application uses `lib/api/` as the operational client boundary. `NEXT_PUBLIC_API_URL` selects the backend.
 
-The legacy TypeScript simulation engine is retained as reference code but is not the operational source of truth for the integrated routes.
+The legacy TypeScript simulation engine and legacy 125-entry attack dataset are retained only as reference/compatibility material; they are not the operational source of truth for the integrated routes.
 
 ## 13. Reproducibility
 
-The default backend experiment seed is `829134`. Key experiment commands are documented in the root README and can be executed independently or with `python scripts/run_all.py`.
+The default backend experiment seed is `829134`. Key experiment commands are documented in the root README and can be executed independently or with `python scripts/run_all.py` after setting the repository root on `PYTHONPATH`.
 
 The model training script records:
 

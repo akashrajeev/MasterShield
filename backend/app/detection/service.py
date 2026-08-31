@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .model import Detector
-from ..features.pipeline import FEATURE_NAMES, build_features
+from ..features.pipeline import build_features
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
 
@@ -21,28 +21,28 @@ def _load_saved_model() -> Detector | None:
     global _cached_model, _cached_mtime_ns
     if not MODEL_PATH.exists():
         return None
-    mtime = MODEL_PATH.stat().st_mtime_ns
-    if _cached_model is not None and _cached_mtime_ns == mtime:
-        if getattr(_cached_model, "feature_names", []) == FEATURE_NAMES and _cached_model.VERSION == Detector.VERSION:
-            return _cached_model
-        return None
-    with _lock:
+    try:
+        mtime = MODEL_PATH.stat().st_mtime_ns
         if _cached_model is not None and _cached_mtime_ns == mtime:
-            if getattr(_cached_model, "feature_names", []) == FEATURE_NAMES and _cached_model.VERSION == Detector.VERSION:
+            return _cached_model
+        with _lock:
+            if _cached_model is not None and _cached_mtime_ns == mtime:
                 return _cached_model
-            return None
-        loaded = Detector.load(MODEL_PATH)
-        _cached_model = loaded
-        _cached_mtime_ns = mtime
-        if loaded.VERSION != Detector.VERSION or loaded.feature_names != FEATURE_NAMES:
-            return None
-        return loaded
+            candidate = Detector.load(MODEL_PATH)
+            if candidate.VERSION != Detector.VERSION or Detector.FORBIDDEN_FEATURES.intersection(candidate.feature_names):
+                return None
+            _cached_model = candidate
+            _cached_mtime_ns = mtime
+            return candidate
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def get_model(seed: int = 829134, train_events: int = 12000) -> Detector:
     saved = _load_saved_model()
     if saved is not None:
         return saved
+
     attacks = load_attacks()
     train = generate_attack_scenario(
         train_events,
@@ -54,6 +54,11 @@ def get_model(seed: int = 829134, train_events: int = 12000) -> Detector:
         "medium",
     )
     model = Detector().fit(build_features(train), train.ground_truth)
+    try:
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        model.save(MODEL_PATH)
+    except OSError:
+        pass
     return model
 
 

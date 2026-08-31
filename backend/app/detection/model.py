@@ -20,20 +20,14 @@ class Detector:
     """Reproducible synthetic-payment fraud detector with fused risk signals."""
 
     VERSION = "4.3"
+    FORBIDDEN_FEATURES = {
+        "ground_truth", "attack_id", "attack_family", "attack_difficulty", "attack_novelty",
+        "attack_severity", "attack_name", "scenario_id", "scenario_stage", "multi_stage_scenario",
+    }
 
     def __init__(self) -> None:
-        self.classifier = HistGradientBoostingClassifier(
-            max_iter=220,
-            learning_rate=.06,
-            max_leaf_nodes=31,
-            l2_regularization=.30,
-            random_state=42,
-        )
-        self.anomaly = IsolationForest(
-            n_estimators=180,
-            contamination=.05,
-            random_state=42,
-        )
+        self.classifier = HistGradientBoostingClassifier(max_iter=220, learning_rate=.06, max_leaf_nodes=31, l2_regularization=.30, random_state=42)
+        self.anomaly = IsolationForest(n_estimators=180, contamination=.05, random_state=42)
         self.fitted = False
         self.feature_names: list[str] = []
         self.feature_importance_: dict[str, float] = {}
@@ -42,6 +36,9 @@ class Detector:
 
     def fit(self, X, y):
         self.feature_names = list(X.columns)
+        leakage = self.FORBIDDEN_FEATURES.intersection(self.feature_names)
+        if leakage:
+            raise ValueError(f"ground-truth metadata cannot be used as detector features: {sorted(leakage)}")
         self.classifier.fit(X, y)
         self.anomaly.fit(X)
         raw = -self.anomaly.score_samples(X)
@@ -49,7 +46,6 @@ class Detector:
         self.anomaly_max = float(np.quantile(raw, .99))
         if self.anomaly_max <= self.anomaly_min:
             self.anomaly_max = self.anomaly_min + 1.0
-
         sample = X.iloc[: min(len(X), 1500)]
         labels = np.asarray(y)[: len(sample)]
         if len(np.unique(labels)) > 1:
@@ -78,11 +74,7 @@ class Detector:
     def component_scores(self, X) -> dict[str, np.ndarray]:
         if not self.fitted:
             raise RuntimeError("Detector must be fitted before inference")
-        return {
-            "supervised": self.classifier.predict_proba(X)[:, 1],
-            "anomaly": self._anomaly_score(X),
-            "graph": np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X)),
-        }
+        return {"supervised": self.classifier.predict_proba(X)[:, 1], "anomaly": self._anomaly_score(X), "graph": np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X))}
 
     def evaluate(self, X, y, threshold=.5):
         scores = self.predict_scores(X)
@@ -91,14 +83,7 @@ class Detector:
         tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
         auc = roc_auc_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         pr_auc = average_precision_score(y, scores) if len(np.unique(y)) > 1 else 0.0
-        return {
-            "precision": _bounded(precision), "recall": _bounded(recall), "f1": _bounded(f1),
-            "roc_auc": _bounded(auc), "pr_auc": _bounded(pr_auc),
-            "false_positive_rate": _bounded(fp / max(fp + tn, 1)),
-            "false_negative_rate": _bounded(fn / max(fn + tp, 1)),
-            "true_positives": int(tp), "true_negatives": int(tn),
-            "false_positives": int(fp), "false_negatives": int(fn),
-        }
+        return {"precision": _bounded(precision), "recall": _bounded(recall), "f1": _bounded(f1), "roc_auc": _bounded(auc), "pr_auc": _bounded(pr_auc), "false_positive_rate": _bounded(fp / max(fp + tn, 1)), "false_negative_rate": _bounded(fn / max(fn + tp, 1)), "true_positives": int(tp), "true_negatives": int(tn), "false_positives": int(fp), "false_negatives": int(fn)}
 
     def decisions(self, scores: Iterable[float], threshold=.5) -> list[str]:
         return [decision(float(score), threshold) for score in scores]
@@ -106,16 +91,11 @@ class Detector:
     @staticmethod
     def _signal_strength(name: str, value: float) -> float:
         v = float(value)
-        if name in {"device_trust_score", "identity_consistency"}:
-            return float(np.clip(1 - v, 0, 1))
-        if name in {"amount", "amount_log", "amount_zscore"}:
-            return float(np.tanh(max(v, 0) / 6))
-        if name in {"velocity_1h", "velocity_24h"}:
-            return float(np.tanh(max(v, 0) / 12))
-        if name == "geo_distance_km":
-            return float(np.tanh(max(v, 0) / 50))
-        if name == "account_age_days":
-            return float(np.clip(1 - v / 365, 0, 1))
+        if name in {"device_trust_score", "identity_consistency"}: return float(np.clip(1 - v, 0, 1))
+        if name in {"amount", "amount_log", "amount_zscore"}: return float(np.tanh(max(v, 0) / 6))
+        if name in {"velocity_1h", "velocity_24h"}: return float(np.tanh(max(v, 0) / 12))
+        if name == "geo_distance_km": return float(np.tanh(max(v, 0) / 50))
+        if name == "account_age_days": return float(np.clip(1 - v / 365, 0, 1))
         return float(np.clip(v, 0, 1))
 
     def explain(self, row, score: float, threshold: float = .5) -> dict:
@@ -130,13 +110,22 @@ class Detector:
         return {"risk_score": float(score), "decision": decision(float(score), threshold), "prediction": int(score >= threshold), "top_signals": contributions[:6]}
 
     def save(self, path: str | Path) -> None:
-        target = Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, target)
+        target = Path(path); target.parent.mkdir(parents=True, exist_ok=True); joblib.dump(self, target)
 
     @classmethod
     def load(cls, path: str | Path) -> "Detector":
         model = joblib.load(path)
-        if not isinstance(model, cls):
-            raise TypeError("model artifact is not a MasterShield Detector")
+        if not isinstance(model, cls): raise TypeError("model artifact is not a MasterShield Detector")
+        if model.VERSION != cls.VERSION or cls.FORBIDDEN_FEATURES.intersection(model.feature_names):
+            from ..generators.scenarios import generate_attack_scenario
+            from ..identify.catalog import load_attacks
+            from ..features.pipeline import build_features
+            attacks = load_attacks()
+            train = generate_attack_scenario(12000, 829233, [attack.id for attack in attacks], .12, "high", "static", "medium")
+            refreshed = cls().fit(build_features(train), train.ground_truth)
+            try:
+                refreshed.save(path)
+            except OSError:
+                pass
+            return refreshed
         return model

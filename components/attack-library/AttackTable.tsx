@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Attack } from "@/types/attack";
-import { categoryLabel } from "@/data/attacks";
+import { categoryLabel } from "@/data/category-labels";
 import { Badge } from "./AttackCard";
 
 export function AttackTable({ attacks }: { attacks: Attack[] }) { const [sort, setSort] = useState<"name"|"severity"|"simulationStatus"|"evidenceStatus">("severity"); const ordered = [...attacks].sort((a,b) => String(a[sort]).localeCompare(String(b[sort]))); const head=(label:string,key:typeof sort)=><button onClick={()=>setSort(key)}>{label}{sort===key?" ↓":""}</button>;

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Attack, AttackCategory } from "@/types/attack";
-import { categoryLabel } from "@/data/attacks";
+import { categoryLabel } from "@/data/category-labels";
 
 const colors: Record<AttackCategory, string> = {
   identity: "#57c6ef",
@@ -33,15 +33,11 @@ export function AttackLandscape({
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const [hover, setHover] = useState<Attack | null>(null);
 
-  // Pick representative sample across categories for visualization
   const shown = useMemo(() => {
     if (attacks.length <= 24) return attacks;
-    // ensure at least 1-2 from each category
     const map = new Map<string, Attack>();
     attacks.forEach(a => {
-      if (!map.has(a.category) || map.size < 24) {
-        map.set(a.id, a);
-      }
+      if (!map.has(a.category) || map.size < 24) map.set(a.id, a);
     });
     return Array.from(map.values()).slice(0, 24);
   }, [attacks]);
@@ -147,4 +143,3 @@ export function AttackLandscape({
     </section>
   );
 }
-

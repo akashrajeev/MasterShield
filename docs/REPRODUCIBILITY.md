@@ -6,11 +6,11 @@ This document explains how to regenerate MasterShield's synthetic data, model ar
 
 Recommended:
 
-- Python 3.11+ (the CI-tested environment is authoritative)
+- Python 3.11+
 - Node.js compatible with the repository's Next.js version
 - Git
 
-Python dependencies are defined in `backend/requirements.txt`.
+Python dependencies are specified in `backend/requirements.txt`.
 
 ## 2. Create the Python environment
 
@@ -26,23 +26,15 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-### Import path
-
-The scripts import the repository's `backend` package. From a fresh clone, set the repository root on `PYTHONPATH` before running them.
-
-macOS/Linux:
+Because the scripts import the repository's `backend` package, run them from the repository root with the root directory on `PYTHONPATH`:
 
 ```bash
+# macOS/Linux
 export PYTHONPATH=.
-```
 
-Windows PowerShell:
-
-```powershell
+# Windows PowerShell
 $env:PYTHONPATH = "."
 ```
-
-Alternatively, run the commands from an environment/configuration that already exposes the repository root on the Python import path (as CI does).
 
 ## 3. Validate the attack catalog
 
@@ -50,7 +42,7 @@ Alternatively, run the commands from an environment/configuration that already e
 python scripts/validate_catalog.py
 ```
 
-The canonical catalog is `data/attacks/attacks.json`. The current validated target is 120 scenarios across 12 families. Legacy frontend/reference data may contain older counts and is not the operational source of truth.
+The canonical catalog contains 120 synthetic defensive scenarios across 12 families. Validation checks IDs, generator mappings and supported generator families.
 
 ## 4. Generate synthetic data
 
@@ -73,9 +65,9 @@ The generator is deterministic for a given configuration and seed. Data is synth
 python scripts/train_model.py
 ```
 
-The detector feature set intentionally excludes scenario-generation metadata that would leak the fraud label. This is important: benchmark numbers should be regenerated after code changes rather than copied from older model artifacts.
+The current detector is leakage-safe: attack IDs, labels, scenario IDs/stages and other ground-truth metadata are excluded from model features. The script trains the detector, selects an operating threshold under a false-positive constraint, and writes local artifacts under `ml/models/` and `ml/results/`.
 
-The script writes local artifacts under `ml/models/` and `ml/results/`.
+The model artifact should be regenerated after changes to the feature schema or detector version.
 
 ## 6. Evaluate on a held-out test population
 
@@ -83,7 +75,7 @@ The script writes local artifacts under `ml/models/` and `ml/results/`.
 python scripts/evaluate_model.py
 ```
 
-The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, as well as threshold analysis and measured inference time.
+The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, a threshold sweep and measured inference time.
 
 ## 7. Evaluate unseen attack families
 
@@ -107,7 +99,7 @@ The benchmark evaluates low, medium, high and very-high difficulty settings.
 python scripts/run_closed_loop.py
 ```
 
-The hardening implementation maintains separate training, red-team search/augmentation, and untouched test populations.
+The hardening implementation maintains separate training, red-team search/augmentation and untouched test populations.
 
 ## 10. Run everything
 
@@ -115,7 +107,7 @@ The hardening implementation maintains separate training, red-team search/augmen
 python scripts/run_all.py
 ```
 
-This executes catalog validation, data generation, model training, standard evaluation, unseen-family evaluation, difficulty benchmarking, and closed-loop robustness testing in sequence.
+This executes catalog validation, data generation, model training, standard evaluation, unseen-family evaluation, difficulty benchmarking and closed-loop robustness testing in sequence.
 
 ## 11. Run the API
 
@@ -128,8 +120,6 @@ Then open:
 ```text
 http://localhost:8000/docs
 ```
-
-The API auto-retrains an in-memory detector when a saved artifact does not match the current feature schema/version, so local inference remains compatible after model feature changes. For documented benchmark results, explicitly rerun the training/evaluation scripts.
 
 ## 12. Run the frontend against the backend
 
@@ -169,4 +159,4 @@ For a documented experiment record, capture:
 
 ## 14. Why seeds matter
 
-The simulator, attack assignment, network shaping and mutation search all use seeded pseudo-random generation. Reusing the same seed and configuration should reproduce the same experiment distribution and transaction IDs. Floating-point and library-version differences can still produce small numerical differences, so reproducibility should be understood as deterministic experiment generation under the documented software environment rather than byte-for-byte guarantees across arbitrary library versions.
+The simulator, attack assignment, network shaping and mutation search use seeded pseudo-random generation. Reusing the same seed and configuration should reproduce the same experiment distribution and transaction IDs. Floating-point and library-version differences can still produce small numerical differences, so reproducibility means deterministic experiment generation under the documented environment rather than byte-for-byte guarantees across arbitrary library versions.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Attack } from "@/types/attack";
-import { categoryLabel } from "@/data/attacks";
+import { categoryLabel } from "@/data/category-labels";
 
 const humanize = (value: string) => value.replaceAll("-", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 export function Badge({ value, kind }: { value: string; kind?: "severity" | "evidence" | "simulation" }) { return <span className={`attack-badge ${kind || ""} ${value}`}>{humanize(value)}</span>; }

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { getTransactionAssessment } from "@/lib/api/investigation";
 import { getBackendAttack, adaptBackendAttack } from "@/lib/api/attacks";
 

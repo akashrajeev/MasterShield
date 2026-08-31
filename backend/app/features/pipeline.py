@@ -5,8 +5,8 @@ import pandas as pd
 
 from .graph import derive_network_features
 
-# Keep features causally available to the detector. `scenario_stage` is generation metadata
-# and is highly correlated with the synthetic fraud label, so it is intentionally excluded.
+# Ground-truth/attack metadata is intentionally excluded from model features.
+# These columns remain available in generated records for evaluation only.
 BASE_FEATURES = [
     "amount", "amount_zscore", "velocity_1h", "velocity_24h", "geo_distance_km",
     "beneficiary_age_days", "device_trust_score", "behavioral_deviation", "merchant_risk",
@@ -26,7 +26,11 @@ FEATURE_NAMES = BASE_FEATURES + [
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert synthetic event history into a stable, leakage-resistant model matrix."""
+    """Convert synthetic event history into a stable, leakage-safe model matrix.
+
+    Attack labels, scenario stage/IDs and other ground-truth metadata are excluded
+    so the classifier must learn from observable payment behavior instead of labels.
+    """
     out = derive_network_features(df.copy())
     for col in BASE_FEATURES:
         if col not in out.columns:
