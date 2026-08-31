@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+const isDev = process.env.NODE_ENV === "development";
+
+const nextConfig: NextConfig = {
+  distDir: isDev ? ".next-dev" : ".next",
+};
 
 export default nextConfig;

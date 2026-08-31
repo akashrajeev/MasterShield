@@ -28,3 +28,5 @@ Thumbs.db
 
 # TypeScript build metadata
 *.tsbuildinfo
+
+.next-dev/

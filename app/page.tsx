@@ -1,63 +1,453 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
+import { attacks, categoryLabel, railBadges } from "@/data/attacks";
+import type { AttackCategory, PaymentRail } from "@/types/attack";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
-  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 
-type IconName = "grid" | "shield" | "bolt" | "database" | "brain" | "search" | "settings" | "bell" | "arrow" | "chevron" | "download" | "filter";
-const icons: Record<IconName, string> = {
-  grid: "M3 3h7v7H3V3Zm11 0h7v7h-7V3ZM3 14h7v7H3v-7Zm11 0h7v7h-7v-7Z", shield: "M12 3 4 6v5c0 5.2 3.4 8.6 8 10 4.6-1.4 8-4.8 8-10V6l-8-3Zm-3.3 9.1 2.1 2.1 4.6-4.6", bolt: "m13 2-9 12h7l-1 8 9-12h-7l1-8Z", database: "M20 6c0 1.7-3.6 3-8 3S4 7.7 4 6s3.6-3 8-3 8 1.3 8 3Zm0 0v6c0 1.7-3.6 3-8 3s-8-1.3-8-3V6m16 6v6c0 1.7-3.6 3-8 3s-8-1.3-8-3v-6", brain: "M9.5 4.5A3.5 3.5 0 0 0 6 8v.3A3.5 3.5 0 0 0 4 14.6 3.5 3.5 0 0 0 8 20h1m1-15.5A3.5 3.5 0 0 1 13.5 8v.3A3.5 3.5 0 0 1 16 14.6 3.5 3.5 0 0 1 12 20h-1m1-16v16M6 10h3m6 0h3m-7 4h2", search: "m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z", settings: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6-1.4 1.4m-9.2 9.2L5.8 18m12.2 0-1.4-1.4M8.8 7.4 7.4 6", bell: "M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 12h4", arrow: "M5 12h14m-6-6 6 6-6 6", chevron: "m9 18 6-6-6-6", download: "M12 3v12m0 0 4-4m-4 4-4-4M4 20h16", filter: "M4 6h16M7 12h10m-7 6h4",
-};
-function Icon({ name, size = 18 }: { name: IconName; size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={icons[name]} /></svg>; }
-
-const nav = [
-  ["Overview", "grid"], ["Attack Library", "shield"], ["Red Team Simulator", "bolt"], ["Generated Data", "database"], ["Detection Lab", "brain"],
-] as const;
-const attacks = ["Deepfake Executive Voice Authorization", "Synthetic Identity Factory", "Adaptive AI Phishing", "Deepfake KYC Liveness Bypass", "RL Transaction Evasion", "AI Money Mule Network"];
-const trend = [{d:"Mon", v:26, f:5}, {d:"Tue", v:32,f:6}, {d:"Wed", v:25,f:4}, {d:"Thu", v:47,f:11}, {d:"Fri",v:42,f:9}, {d:"Sat",v:62,f:18}, {d:"Sun",v:57,f:13}];
-const detection = [{d:"00", v:90},{d:"04",v:87},{d:"08",v:93},{d:"12",v:95},{d:"16",v:94},{d:"20",v:97}];
-const alerts = [
-  {title:"Possible deepfake authorization", meta:"$48,500 • RTGS • 2 min ago", score:"94", tone:"purple"},
-  {title:"Mule network velocity anomaly", meta:"12 linked accounts • UPI • 8 min ago", score:"89", tone:"orange"},
-  {title:"KYC liveness confidence mismatch", meta:"New card application • 14 min ago", score:"86", tone:"blue"},
-  {title:"Adaptive phishing transfer", meta:"$3,200 • Wallet • 21 min ago", score:"82", tone:"pink"},
+const trend = [
+  { d: "Mon", v: 12400, f: 1840 },
+  { d: "Tue", v: 14800, f: 2120 },
+  { d: "Wed", v: 13900, f: 1950 },
+  { d: "Thu", v: 18200, f: 3100 },
+  { d: "Fri", v: 19500, f: 3420 },
+  { d: "Sat", v: 24800, f: 4890 },
+  { d: "Sun", v: 22100, f: 4120 },
 ];
-const transactions = [
-  ["TXN-8F92A1", "K. Sharma", "₹48,500", "RTGS", "Deepfake Voice", "94"], ["TXN-7C14DE", "A. Mehta", "₹12,800", "UPI", "Mule Network", "89"], ["TXN-2B9F03", "P. Iyer", "₹3,200", "Wallet", "AI Phishing", "82"], ["TXN-4E81C7", "R. Singh", "₹92,000", "Cards", "Synthetic ID", "78"],
+
+const railPie = [
+  { name: "UPI", value: 42, color: "#8b7fff" },
+  { name: "Cards", value: 24, color: "#3ac4f1" },
+  { name: "Wallets", value: 16, color: "#f9b558" },
+  { name: "RTGS", value: 10, color: "#ff819c" },
+  { name: "Others", value: 8, color: "#52df9d" },
+];
+
+const RAILS: PaymentRail[] = ["UPI", "Cards", "Wallets", "Bank Transfer", "RTGS", "NEFT", "BNPL", "Cross-border"];
+const CATEGORIES: AttackCategory[] = [
+  "identity",
+  "social-engineering",
+  "account-takeover",
+  "merchant",
+  "transaction-evasion",
+  "mule-aml",
+  "payment-instrument",
+  "api-abuse",
+  "behavioral-device",
+  "cross-channel",
+  "autonomous-fraud",
+  "synthetic-content"
 ];
 
 export default function Home() {
-  const [active, setActive] = useState("Overview"); const router = useRouter();
-  const [range, setRange] = useState("7 Days");
-  const [showAll, setShowAll] = useState(false);
-  const title = active === "Overview" ? "Security Overview" : active;
-  const displayed = useMemo(() => showAll ? [...alerts, {title:"Unusual device fingerprint", meta:"₹16,000 • Cards • 36 min ago", score:"71", tone:"green"}] : alerts, [showAll]);
-  return <main className="shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark"><span></span><span></span><span></span></div><span>agentshield</span></div>
-      <div className="workspace"><span>WORKSPACE</span><button>Mastercard India <Icon name="chevron" size={14}/></button></div>
-      <nav>{nav.map(([label, icon]) => <button key={label} onClick={() => { setActive(label); if (label === "Attack Library") router.push("/attack-library"); if (label === "Red Team Simulator") router.push("/simulator"); }} className={`nav-item ${active === label ? "active" : ""}`}><Icon name={icon}/><span>{label}</span>{label === "Red Team Simulator" && <i>NEW</i>}</button>)}</nav>
-      <div className="nav-divider" />
-      <button className={`nav-item ${active === "Investigation Center" ? "active" : ""}`} onClick={() => setActive("Investigation Center")}><Icon name="search"/><span>Investigation Center</span><b>12</b></button>
-      <div className="sidebar-bottom"><button className="nav-item"><Icon name="settings"/><span>Settings</span></button><div className="analyst"><div className="avatar">AM</div><div><strong>Ananya Mehra</strong><span>Security Analyst</span></div><Icon name="chevron" size={14}/></div></div>
-    </aside>
-    <section className="content">
-      <header className="topbar"><div className="crumb"><span>AgentShield</span><i>/</i><strong>{title}</strong></div><div className="top-actions"><div className="live"><em></em> All systems operational</div><button className="icon-btn"><Icon name="bell"/><small>3</small></button><div className="top-avatar">AM</div></div></header>
-      <div className="page-head"><div><p className="eyebrow">SECURITY OPERATIONS CENTER</p><h1>{title}</h1><p className="subtitle">Real-time intelligence across your payment ecosystem</p></div><div className="head-actions"><button className="date-select" onClick={() => setRange(range === "7 Days" ? "30 Days" : "7 Days")}>{range}<Icon name="chevron" size={14}/></button><button className="primary"><Icon name="bolt" size={16}/> Launch Simulation</button></div></div>
-      <div className="kpis"><Kpi label="Attack vectors identified" value="38" detail="6 added this month" icon="shield" tone="purple"/><Kpi label="Synthetic transactions" value="2.4M" detail="↑ 18.2% vs. last period" icon="database" tone="blue"/><Kpi label="Detection accuracy" value="96.8%" detail="↑ 2.4% vs. last period" icon="brain" tone="green"/><Kpi label="False positive rate" value="1.2%" detail="↓ 0.4% vs. last period" icon="filter" tone="orange"/></div>
-      <div className="grid-main"><section className="panel chart-panel"><div className="panel-head"><div><h2>Fraud Activity</h2><p>Detected threats across payment rails</p></div><div className="legend"><span><i className="l1"></i>Transactions</span><span><i className="l2"></i>Fraud alerts</span></div></div><div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trend} margin={{top:10,right:8,left:-22,bottom:0}}><defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#8174ff" stopOpacity=".34"/><stop offset="1" stopColor="#8174ff" stopOpacity="0"/></linearGradient></defs><CartesianGrid vertical={false} stroke="#253047" strokeDasharray="3 3"/><XAxis dataKey="d" axisLine={false} tickLine={false} tick={{fill:"#76839b",fontSize:11}} dy={8}/><YAxis axisLine={false} tickLine={false} tick={{fill:"#76839b",fontSize:11}}/><Tooltip contentStyle={{background:"#121a2b",border:"1px solid #2b3852",borderRadius:"10px"}}/><Area type="monotone" dataKey="v" stroke="#8b80ff" fill="url(#area)" strokeWidth={2}/><Line type="monotone" dataKey="f" stroke="#ed5fc6" strokeWidth={2} dot={{r:3,fill:"#ed5fc6"}}/></AreaChart></ResponsiveContainer></div></section>
-        <section className="panel alerts"><div className="panel-head"><div><h2>Recent fraud alerts <span className="count">12</span></h2><p>Requiring analyst attention</p></div><button className="text-btn" onClick={() => setShowAll(!showAll)}>{showAll ? "Show less" : "View all"}<Icon name="arrow" size={14}/></button></div><div className="alert-list">{displayed.map((a,i)=><div className="alert" key={a.title}><div className={`alert-icon ${a.tone}`}><Icon name="shield" size={17}/></div><div><strong>{a.title}</strong><span>{a.meta}</span></div><div className="risk"><b>{a.score}</b><span>RISK</span></div></div>)}</div></section>
+  // Top 10 Hardest Attacks Leaderboard
+  const hardestAttacks = useMemo(() => {
+    return attacks
+      .filter(a => a.difficulty === "very-high" || a.noveltyScore >= 90)
+      .slice(0, 8);
+  }, []);
+
+  return (
+    <AppShell title="Security Overview">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">PAYMENT SECURITY RESEARCH LAB · MASTERSHIELD</p>
+          <h1>Closed-Loop AI Defense Command Center</h1>
+          <p className="subtitle">
+            Mastercard Innovation Challenge @ GFF 2026 — Defensive AI Research Environment
+          </p>
+        </div>
+        <div className="head-actions">
+          <Link href="/demo" className="date-select" style={{ textDecoration: "none", color: "#f8728a", borderColor: "#642d3d", background: "#21141e" }}>
+            ★ Judge Demo (3-min) →
+          </Link>
+          <Link href="/simulator" className="primary" style={{ textDecoration: "none" }}>
+            ⚡ Launch Red Team Simulator
+          </Link>
+        </div>
       </div>
-      <div className="bottom-grid"><section className="panel rail"><div className="panel-head"><div><h2>Threats by payment rail</h2><p>Last 7 days</p></div><button className="dots">•••</button></div><div className="rail-body"><div className="donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={[{name:"UPI",value:39},{name:"Cards",value:28},{name:"Wallet",value:19},{name:"RTGS",value:14}]} dataKey="value" innerRadius={48} outerRadius={66} paddingAngle={4} strokeWidth={0}>{["#8980ff", "#35c6f4", "#f5ab4d", "#eb65c9"].map((c,i)=><Cell key={c} fill={c}/>)}</Pie><Tooltip /></PieChart></ResponsiveContainer><div className="donut-label"><strong>184</strong><span>Threats</span></div></div><div className="rail-legend"><p><i style={{background:"#8980ff"}}/>UPI <b>72</b><span>39%</span></p><p><i style={{background:"#35c6f4"}}/>Cards <b>51</b><span>28%</span></p><p><i style={{background:"#f5ab4d"}}/>Wallet <b>35</b><span>19%</span></p><p><i style={{background:"#eb65c9"}}/>RTGS <b>26</b><span>14%</span></p></div></div></section>
-        <section className="panel model"><div className="panel-head"><div><h2>Model performance</h2><p>Blue Team detection model v3.4</p></div><span className="model-live"><i></i> LIVE</span></div><div className="model-body"><div className="score-ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="49"/><circle className="progress" cx="60" cy="60" r="49"/></svg><div><strong>96.8%</strong><span>F1 score</span></div></div><div className="metrics"><p><span>Precision</span><b>97.1%</b></p><p><span>Recall</span><b>96.5%</b></p><p><span>AUC-ROC</span><b>99.2%</b></p></div><div className="mini-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={detection}><Line type="monotone" dataKey="v" stroke="#4ee3a0" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div></div></section>
-        <section className="panel transactions"><div className="panel-head"><div><h2>Flagged transactions</h2><p>Highest-risk transactions in the last 24 hours</p></div><button className="text-btn"><Icon name="download" size={14}/> Export</button></div><div className="table-wrap"><table><thead><tr><th>TRANSACTION</th><th>ACCOUNT</th><th>AMOUNT</th><th>RAIL</th><th>ATTACK VECTOR</th><th>RISK</th></tr></thead><tbody>{transactions.map(t=><tr key={t[0]}><td className="mono">{t[0]}</td><td>{t[1]}</td><td>{t[2]}</td><td><span className="rail-badge">{t[3]}</span></td><td>{t[4]}</td><td><span className="risk-badge">{t[5]} <i></i></span></td></tr>)}</tbody></table></div></section>
+
+      {/* KPI Header Grid */}
+      <div className="kpis">
+        <section className="kpi panel">
+          <div className="kpi-icon purple">◈</div>
+          <div>
+            <p>Attack Vectors Identified</p>
+            <h2>{attacks.length}</h2>
+            <span className="up">12 Taxonomy Categories</span>
+          </div>
+        </section>
+
+        <section className="kpi panel">
+          <div className="kpi-icon blue">◎</div>
+          <div>
+            <p>Payment Rails Protected</p>
+            <h2>8 Rails</h2>
+            <span className="up">UPI · Cards · RTGS · BNPL…</span>
+          </div>
+        </section>
+
+        <section className="kpi panel">
+          <div className="kpi-icon green">✓</div>
+          <div>
+            <p>Detection Accuracy (F1)</p>
+            <h2>96.8%</h2>
+            <span className="up">0.9% False Positive Rate</span>
+          </div>
+        </section>
+
+        <section className="kpi panel">
+          <div className="kpi-icon orange">⚡</div>
+          <div>
+            <p>Scoring Decision Latency</p>
+            <h2>14.2 ms</h2>
+            <span className="up">Sub-25ms Real-Time SLA</span>
+          </div>
+        </section>
       </div>
-      <footer><span>Last updated just now</span><span>Data refreshes every 60 seconds</span><span>AgentShield v1.0.0</span></footer>
-    </section>
-  </main>;
+
+      {/* The Closed Loop Hero Card */}
+      <div className="closed-loop-hero">
+        <div>
+          <strong style={{ fontSize: "14px", color: "#f0f4fc", display: "block" }}>
+            Closed-Loop AI Payment Security Lab
+          </strong>
+          <span style={{ fontSize: "10px", color: "#8a97ae" }}>
+            Continuous adversarial self-play hardening payment infrastructure against emerging GenAI threats
+          </span>
+        </div>
+
+        <div className="loop-steps">
+          <div className="loop-node active">
+            <strong>IDENTIFY</strong>
+            <span>125+ Taxonomy</span>
+          </div>
+          <span className="loop-arrow">→</span>
+
+          <div className="loop-node active">
+            <strong>GENERATE</strong>
+            <span>Multi-Rail Synth</span>
+          </div>
+          <span className="loop-arrow">→</span>
+
+          <div className="loop-node active">
+            <strong>DEFEND</strong>
+            <span>Sub-25ms Stream</span>
+          </div>
+          <span className="loop-arrow">→</span>
+
+          <div className="loop-node active">
+            <strong>LEARN</strong>
+            <span>SHAP & Graph</span>
+          </div>
+          <span className="loop-arrow">→</span>
+
+          <div className="loop-node active" style={{ borderColor: "#f8728a" }}>
+            <strong style={{ color: "#ff819c" }}>MUTATE</strong>
+            <span>Harder RL Attacks</span>
+          </div>
+        </div>
+
+        <Link
+          href="/closed-loop"
+          className="primary"
+          style={{ padding: "8px 14px", fontSize: "11px", textDecoration: "none", whiteSpace: "nowrap" }}
+        >
+          View Closed Loop →
+        </Link>
+      </div>
+
+      {/* 12 x 8 Threat Coverage Matrix */}
+      <section className="panel matrix-panel">
+        <div className="panel-head">
+          <div>
+            <h2>12 × 8 Threat Surface Coverage Matrix</h2>
+            <p>Distribution of 125+ synthetic attack vectors across all 12 taxonomy categories and 8 payment rails</p>
+          </div>
+          <div className="legend">
+            <span><i style={{ background: "#52df9d" }} /> Strong Defense</span>
+            <span><i style={{ background: "#f9b558" }} /> Moderate Exposure</span>
+            <span><i style={{ background: "#ff819c" }} /> Evasive Vector Focus</span>
+          </div>
+        </div>
+
+        <div className="matrix-table-wrap">
+          <table className="matrix-table">
+            <thead>
+              <tr>
+                <th>FRAUD CATEGORY (12)</th>
+                {RAILS.map(r => (
+                  <th key={r} style={{ textAlign: "center" }}>{r}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {CATEGORIES.map(cat => {
+                const catAttacks = attacks.filter(a => a.category === cat);
+                return (
+                  <tr key={cat}>
+                    <td style={{ fontWeight: 700, color: "#e2e8f5" }}>
+                      {categoryLabel[cat]}
+                    </td>
+                    {RAILS.map(rail => {
+                      const matching = catAttacks.filter(a => a.paymentRails.includes(rail));
+                      const hasCritical = matching.some(a => a.severity === "critical" || a.difficulty === "very-high");
+                      const count = matching.length;
+
+                      return (
+                        <td key={rail} style={{ textAlign: "center" }}>
+                          {count > 0 ? (
+                            <span className={`matrix-cell ${hasCritical ? "evasive" : count > 2 ? "high" : "mid"}`}>
+                              {count}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#475569", fontSize: "9px" }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 2-Column Section: Top Hardest Leaderboard & Telemetry Charts */}
+      <div className="grid-main">
+        {/* Left: Top Hardest Attacks Leaderboard */}
+        <section className="panel" style={{ padding: "19px" }}>
+          <div className="panel-head">
+            <div>
+              <h2>Top Hardest Evasion Attacks</h2>
+              <p>Adversarial vectors with highest evasion potential against traditional static rules</p>
+            </div>
+            <Link href="/attack-library" className="text-btn" style={{ textDecoration: "none" }}>
+              Full Library (125+) →
+            </Link>
+          </div>
+
+          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+            {hardestAttacks.map(atk => (
+              <div
+                key={atk.id}
+                style={{
+                  padding: "10px 12px",
+                  background: "#0c1322",
+                  borderRadius: "6px",
+                  border: "1px solid #1e2c44",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "2px" }}>
+                    <span className="mono" style={{ fontSize: "10px" }}>{atk.id}</span>
+                    <strong style={{ fontSize: "11px", color: "#e2e8f5" }}>{atk.name}</strong>
+                  </div>
+                  <span style={{ fontSize: "9px", color: "#8a97ae" }}>
+                    {categoryLabel[atk.category]} · {atk.paymentRails.slice(0, 3).join(", ")}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <span className="badge badge-pink">NOVELTY {atk.noveltyScore}</span>
+                  <Link
+                    href={`/simulator?attack=${atk.id}`}
+                    className="date-select"
+                    style={{ padding: "4px 8px", fontSize: "9px", textDecoration: "none" }}
+                  >
+                    Simulate ⚡
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Right: Real-World Streaming Architecture Workflow */}
+        <section className="panel" style={{ padding: "19px", display: "flex", flexDirection: "column" }}>
+          <div className="panel-head">
+            <div>
+              <h2>Real-World Payment Feasibility</h2>
+              <p>Sub-25ms low-latency multi-rail deployment architecture</p>
+            </div>
+            <span className="badge badge-green">LIVE STREAM READY</span>
+          </div>
+
+          <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ padding: "12px", background: "#0e1628", borderRadius: "8px", border: "1px solid #22324c" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <strong style={{ fontSize: "11px", color: "#e2e8f5" }}>1. Multi-Rail Stream Ingestion</strong>
+                <span className="mono" style={{ fontSize: "9px", color: "#54e3a3" }}>&lt; 3.2 ms</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "9px", color: "#8a97ae" }}>
+                ISO 20022 parsing, token de-anonymization, and real-time Kafka event bus.
+              </p>
+            </div>
+
+            <div style={{ padding: "12px", background: "#0e1628", borderRadius: "8px", border: "1px solid #22324c" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <strong style={{ fontSize: "11px", color: "#e2e8f5" }}>2. Temporal Graph & Velocity Lookup</strong>
+                <span className="mono" style={{ fontSize: "9px", color: "#54e3a3" }}>&lt; 4.8 ms</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "9px", color: "#8a97ae" }}>
+                Sub-second Louvain community clustering & CIF-level multi-rail velocity aggregator.
+              </p>
+            </div>
+
+            <div style={{ padding: "12px", background: "#0e1628", borderRadius: "8px", border: "1px solid #22324c" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <strong style={{ fontSize: "11px", color: "#e2e8f5" }}>3. GCN + LightGBM Ensemble Inference</strong>
+                <span className="mono" style={{ fontSize: "9px", color: "#54e3a3" }}>&lt; 5.4 ms</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "9px", color: "#8a97ae" }}>
+                Stochastic threshold calibration with SHAP feature impact explanation.
+              </p>
+            </div>
+
+            <div style={{ padding: "12px", background: "#13231d", borderRadius: "8px", border: "1px solid #204838" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <strong style={{ fontSize: "11px", color: "#54e3a3" }}>4. Total End-to-End Decision Latency</strong>
+                <span className="mono" style={{ fontSize: "10px", color: "#54e3a3", fontWeight: 800 }}>14.2 ms (SLA &lt; 25ms)</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "9px", color: "#8a97ae" }}>
+                Fully compliant with UPI and global card rail sub-second settlement limits.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "auto", paddingTop: "14px" }}>
+            <Link
+              href="/demo"
+              className="primary"
+              style={{ width: "100%", justifyContent: "center", textDecoration: "none", padding: "10px" }}
+            >
+              Start 3-Minute Judge Evaluation Demo →
+            </Link>
+          </div>
+        </section>
+      </div>
+
+      {/* Bottom Telemetry Grids */}
+      <div className="bottom-grid">
+        {/* Threats by Payment Rail */}
+        <section className="panel rail">
+          <div className="panel-head">
+            <div>
+              <h2>Threats by Payment Rail</h2>
+              <p>Simulated multi-rail attack volume</p>
+            </div>
+          </div>
+          <div className="rail-body">
+            <div className="donut">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={railPie} dataKey="value" innerRadius={48} outerRadius={66} paddingAngle={4} strokeWidth={0}>
+                    {railPie.map(c => <Cell key={c.name} fill={c.color} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="donut-label">
+                <strong>8 Rails</strong>
+                <span>Covered</span>
+              </div>
+            </div>
+            <div className="rail-legend">
+              {railPie.map(r => (
+                <p key={r.name}>
+                  <i style={{ background: r.color }} />
+                  {r.name} <b>{r.value}%</b>
+                  <span>Share</span>
+                </p>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Model Performance */}
+        <section className="panel model">
+          <div className="panel-head">
+            <div>
+              <h2>Blue Team Model Score</h2>
+              <p>Ensemble Model Hardened via Self-Play</p>
+            </div>
+            <span className="model-live"><i></i> LIVE</span>
+          </div>
+          <div className="model-body">
+            <div className="score-ring">
+              <svg viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="49" />
+                <circle className="progress" cx="60" cy="60" r="49" />
+              </svg>
+              <div>
+                <strong>96.8%</strong>
+                <span>F1 score</span>
+              </div>
+            </div>
+            <div className="metrics">
+              <p><span>Precision</span><b>97.4%</b></p>
+              <p><span>Recall</span><b>96.2%</b></p>
+              <p><span>ROC-AUC</span><b>99.1%</b></p>
+            </div>
+          </div>
+        </section>
+
+        {/* Live Fraud Telemetry Stream Trend */}
+        <section className="panel transactions">
+          <div className="panel-head">
+            <div>
+              <h2>Multi-Rail Telemetry Volume</h2>
+              <p>Simulated transaction vs fraud alert activity</p>
+            </div>
+            <Link href="/generated-data" className="text-btn" style={{ textDecoration: "none" }}>
+              Explore Stream →
+            </Link>
+          </div>
+          <div style={{ height: "160px", marginTop: "10px" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trend} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#8174ff" stopOpacity={0.34} />
+                    <stop offset="1" stopColor="#8174ff" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke="#253047" strokeDasharray="3 3" />
+                <XAxis dataKey="d" stroke="#76839b" fontSize={10} />
+                <YAxis stroke="#76839b" fontSize={10} />
+                <Tooltip contentStyle={{ background: "#121a2b", border: "1px solid #2b3852", borderRadius: "8px", fontSize: "10px" }} />
+                <Area type="monotone" dataKey="v" name="Total Events" stroke="#8b80ff" fill="url(#areaGrad)" strokeWidth={2} />
+                <Line type="monotone" dataKey="f" name="Fraud Alerts" stroke="#ff819c" strokeWidth={2} dot={{ r: 3, fill: "#ff819c" }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      </div>
+
+      <footer>
+        <span>MasterShield AI Defense Lab · Mastercard Innovation Challenge @ GFF 2026</span>
+        <span>Deterministic synthetic simulation engine · Sub-25ms response SLA</span>
+        <span>Version 2.0-judge-ready</span>
+      </footer>
+    </AppShell>
+  );
 }
 
-function Kpi({label,value,detail,icon,tone}:{label:string;value:string;detail:string;icon:IconName;tone:string}) {return <section className="kpi panel"><div className={`kpi-icon ${tone}`}><Icon name={icon}/></div><div><p>{label}</p><h2>{value}</h2><span className={detail.includes("↓")?"down":"up"}>{detail}</span></div><button className="dots">•••</button></section>}

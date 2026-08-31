@@ -1,0 +1,14 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Force typescript files to be treated as text
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.json text
+
+# Ignore build artifacts from archives
+/node_modules export-ignore
+/.next export-ignore
+/out export-ignore
