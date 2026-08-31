@@ -1,7 +1,14 @@
 import { notFound } from "next/navigation";
-import { attacks } from "@/data/attacks";
 import { AppShell } from "@/components/layout/AppShell";
 import { AttackDetailClient } from "@/components/attack-library/AttackDetailClient";
+import { getBackendAttack, adaptBackendAttack } from "@/lib/api/attacks";
 
-export function generateStaticParams() { return attacks.map(attack => ({ attackId: attack.id })); }
-export default async function AttackDetailPage({ params }: { params: Promise<{ attackId: string }> }) { const { attackId } = await params; const attack = attacks.find(item => item.id.toLowerCase() === attackId.toLowerCase()); if (!attack) notFound(); return <AppShell title="Attack Intelligence"><AttackDetailClient attack={attack}/></AppShell>; }
+export const dynamic = "force-dynamic";
+
+export default async function AttackDetailPage({ params }: { params: Promise<{ attackId: string }> }) {
+  const { attackId } = await params;
+  try {
+    const attack = adaptBackendAttack(await getBackendAttack(attackId));
+    return <AppShell title="Attack Intelligence"><AttackDetailClient attack={attack} /></AppShell>;
+  } catch { notFound(); }
+}
