@@ -85,12 +85,10 @@ def _impose_network_patterns(df: pd.DataFrame, idx: pd.Index, generator: str, rn
     if len(idx) == 0:
         return
     if generator == "aml":
-        # Concentrate fraud into a small beneficiary pool to create synthetic fan-in/fan-out.
         pool_size = max(3, min(12, len(idx) // 8 or 3))
         pool = rng.choice(df.loc[idx, "beneficiary_id"].to_numpy(), size=pool_size, replace=False if len(idx) >= pool_size else True)
         df.loc[idx, "beneficiary_id"] = rng.choice(pool, len(idx), replace=True)
     elif generator in {"identity", "ato", "autonomous"}:
-        # Shared device clusters create relationship evidence without changing external systems.
         pool_size = max(2, min(8, len(idx) // 12 or 2))
         pool = rng.choice(df.loc[idx, "device_id"].to_numpy(), size=pool_size, replace=False if len(idx) >= pool_size else True)
         df.loc[idx, "device_id"] = rng.choice(pool, len(idx), replace=True)
@@ -105,6 +103,7 @@ def generate_attack_scenario(
     adaptation: str = "static",
     noise: str = "medium",
 ) -> pd.DataFrame:
+    """Generate deterministic synthetic payment telemetry for defensive evaluation."""
     attacks = {a.id: a for a in load_attacks()}
     df = generate_transactions(events, seed, fraud_rate, attack_ids)
     rng = np.random.default_rng(seed + 17)
@@ -117,6 +116,11 @@ def generate_attack_scenario(
     df["content_risk"] = np.clip(rng.beta(1.1, 12, events), 0, 1)
     df["cross_rail_activity"] = 0
     df["identity_consistency"] = np.clip(rng.normal(.86, .10, events), 0, 1)
+    df["attack_family"] = None
+    df["attack_difficulty"] = None
+    df["attack_novelty"] = np.nan
+    df["attack_severity"] = None
+    df["attack_name"] = None
 
     if not len(fraud_idx) or not attack_ids:
         return df
@@ -131,6 +135,13 @@ def generate_attack_scenario(
         generator = attack.generator_id if attack else "transaction"
         p = _profile(generator)
         strength = rng.uniform(.55, 1.0, len(idx))
+
+        if attack is not None:
+            df.loc[idx, "attack_family"] = attack.family
+            df.loc[idx, "attack_difficulty"] = attack.difficulty
+            df.loc[idx, "attack_novelty"] = float(attack.novelty_score)
+            df.loc[idx, "attack_severity"] = attack.severity
+            df.loc[idx, "attack_name"] = attack.name
 
         df.loc[idx, "behavioral_deviation"] = np.clip(df.loc[idx, "behavioral_deviation"] + p["behavioral"] * strength, 0, 1)
         df.loc[idx, "merchant_risk"] = np.clip(df.loc[idx, "merchant_risk"] + p["merchant"] * strength, 0, 1)
