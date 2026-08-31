@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 const navItems = [
   { label: "Overview", href: "/", icon: "⌘" },
-  { label: "Attack Library", href: "/attack-library", icon: "◈", badge: "125+" },
+  { label: "Attack Library", href: "/attack-library", icon: "◈", badge: "120+" },
   { label: "Red Team Simulator", href: "/simulator", icon: "⚡", tag: "SIMULATE" },
   { label: "Generated Data", href: "/generated-data", icon: "▣" },
   { label: "Blue Team Lab", href: "/detection-lab", icon: "◌" },
