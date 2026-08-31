@@ -3,6 +3,13 @@
 /.pnp
 .pnp.*
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
 # Next.js build output
 /.next/
 /out/
@@ -10,14 +17,21 @@
 # Production builds
 /build
 
+# ML artifacts generated locally
+ml/models/*.joblib
+ml/results/*.sqlite3
+ml/results/*.db
+
 # Local environment files
 .env*.local
+.env
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
 # Editor and operating-system files
 .DS_Store
