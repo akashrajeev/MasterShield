@@ -122,5 +122,10 @@ class Detector:
             from ..features.pipeline import build_features
             attacks = load_attacks()
             train = generate_attack_scenario(12000, 829233, [attack.id for attack in attacks], .12, "high", "static", "medium")
-            return cls().fit(build_features(train), train.ground_truth)
+            refreshed = cls().fit(build_features(train), train.ground_truth)
+            try:
+                refreshed.save(path)
+            except OSError:
+                pass
+            return refreshed
         return model
