@@ -1,6 +1,12 @@
 from fastapi import FastAPI
+from .api import router
 
-app = FastAPI(title="MasterShield API", version="0.1.0")
+app = FastAPI(
+    title="MasterShield AI Defense Lab API",
+    version="0.1.0",
+    description="Synthetic red-team/blue-team payment security research API.",
+)
+app.include_router(router)
 
 @app.get("/health")
 def health():
