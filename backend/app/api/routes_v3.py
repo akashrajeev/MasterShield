@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import math
 import time
 
 import pandas as pd
@@ -77,6 +78,49 @@ def annotate_attack_groups(df: pd.DataFrame, attacks):
     return out
 
 
+def safe_value(value):
+    """Convert NumPy/pandas scalar values into strict JSON-compatible values."""
+    if value is None:
+        return None
+    if isinstance(value, float):
+        return float(value) if math.isfinite(value) else None
+    try:
+        missing = pd.isna(value)
+        if isinstance(missing, bool) and missing:
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "item"):
+        try:
+            return safe_value(value.item())
+        except (TypeError, ValueError):
+            pass
+    return value
+
+
+def safe_records(frame: pd.DataFrame) -> list[dict]:
+    return [
+        {str(key): safe_value(value) for key, value in row.items()}
+        for row in frame.to_dict(orient="records")
+    ]
+
+
+def normalize_prediction_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Fill optional identity fields required by causal network features for point predictions."""
+    out = frame.copy()
+    defaults = {
+        "account_id": 1,
+        "beneficiary_id": 1,
+        "device_id": 1,
+        "merchant_id": 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    for column, default in defaults.items():
+        if column not in out.columns:
+            out[column] = [default + i if isinstance(default, int) else default for i in range(len(out))]
+    return out
+
+
 @router.get("/catalog/summary")
 def catalog_summary():
     items = load_attacks()
@@ -144,7 +188,6 @@ def simulate(config: SimulationConfig):
         "status": "completed",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    sample = df.head(100).where(df.head(100).notna(), None)
     return {
         "simulation_id": simulation_id,
         "seed": config.seed,
@@ -152,7 +195,7 @@ def simulate(config: SimulationConfig):
         "fraud_events": int(df.ground_truth.sum()),
         "attack_count": len(ids_for(config)),
         "graph": graph_summary(df),
-        "sample": sample.to_dict(orient="records"),
+        "sample": safe_records(df.head(100)),
     }
 
 
@@ -182,15 +225,13 @@ def simulation_events(simulation_id: str, limit: int = 100, offset: int = 0):
         noise=item.get("noise", "medium"),
     )
     df = build_dataset(cfg)
-    sample = df.iloc[offset: offset + limit].where(
-        df.iloc[offset: offset + limit].notna(), None
-    )
+    page = df.iloc[offset: offset + limit]
     return {
         "simulation_id": simulation_id,
         "offset": offset,
         "limit": limit,
         "total": len(df),
-        "events": sample.to_dict(orient="records"),
+        "events": safe_records(page),
     }
 
 
@@ -261,6 +302,7 @@ def predict(request: PredictionRequest):
         raise HTTPException(status_code=422, detail="events must not be empty")
     if "transaction_id" not in frame.columns:
         frame["transaction_id"] = [f"ROW_{index:06d}" for index in range(len(frame))]
+    frame = normalize_prediction_frame(frame)
     results = assess_frame(frame, request.threshold, request.seed)
     return {
         "model_version": get_model(seed=request.seed).VERSION,
@@ -304,7 +346,7 @@ def synthetic_transaction(transaction_id: str, seed: int = 829134, events: int =
     row = df[df.transaction_id.eq(transaction_id)]
     if row.empty:
         raise HTTPException(status_code=404, detail="synthetic transaction not found")
-    return {"synthetic": True, **row.iloc[0].where(row.iloc[0].notna(), None).to_dict()}
+    return {"synthetic": True, **safe_records(row)[0]}
 
 
 @router.get("/transactions/{transaction_id}/assessment")
@@ -321,7 +363,7 @@ def transaction_assessment(transaction_id: str, seed: int = 829134, events: int 
     explanation["observable_signals"] = explain_row(row.iloc[0], score)
     explanation["attack_id"] = row.iloc[0].get("attack_id")
     explanation["synthetic"] = True
-    return {**row.iloc[0].where(row.iloc[0].notna(), None).to_dict(), **explanation}
+    return {**safe_records(row)[0], **explanation}
 
 
 @router.post("/adversarial/search")
