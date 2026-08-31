@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .model import Detector
-from ..features.pipeline import build_features
+from ..features.pipeline import FEATURE_NAMES, build_features
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
 
@@ -22,12 +22,21 @@ def _load_saved_model() -> Detector | None:
     if not MODEL_PATH.exists():
         return None
     mtime = MODEL_PATH.stat().st_mtime_ns
-    if _cached_model is None or _cached_mtime_ns != mtime:
-        with _lock:
-            if _cached_model is None or _cached_mtime_ns != mtime:
-                _cached_model = Detector.load(MODEL_PATH)
-                _cached_mtime_ns = mtime
-    return _cached_model
+    if _cached_model is not None and _cached_mtime_ns == mtime:
+        if getattr(_cached_model, "feature_names", []) == FEATURE_NAMES and _cached_model.VERSION == Detector.VERSION:
+            return _cached_model
+        return None
+    with _lock:
+        if _cached_model is not None and _cached_mtime_ns == mtime:
+            if getattr(_cached_model, "feature_names", []) == FEATURE_NAMES and _cached_model.VERSION == Detector.VERSION:
+                return _cached_model
+            return None
+        loaded = Detector.load(MODEL_PATH)
+        _cached_model = loaded
+        _cached_mtime_ns = mtime
+        if loaded.VERSION != Detector.VERSION or loaded.feature_names != FEATURE_NAMES:
+            return None
+        return loaded
 
 
 def get_model(seed: int = 829134, train_events: int = 12000) -> Detector:
@@ -44,7 +53,8 @@ def get_model(seed: int = 829134, train_events: int = 12000) -> Detector:
         "static",
         "medium",
     )
-    return Detector().fit(build_features(train), train.ground_truth)
+    model = Detector().fit(build_features(train), train.ground_truth)
+    return model
 
 
 def assess_frame(df: pd.DataFrame, threshold: float = .5, seed: int = 829134) -> list[dict[str, Any]]:
