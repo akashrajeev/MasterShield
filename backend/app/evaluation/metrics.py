@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
@@ -38,7 +39,8 @@ def metrics_by_group(df, scores, group_col: str, threshold: float = .5) -> dict:
     scores_arr = np.asarray(scores)
     for key, group in df.groupby(group_col, dropna=False):
         idx = group.index.to_numpy()
-        out[str(key)] = binary_metrics(df.loc[idx, "ground_truth"], scores_arr[idx], threshold)
+        label = "benign" if pd.isna(key) else str(key)
+        out[label] = binary_metrics(df.loc[idx, "ground_truth"], scores_arr[idx], threshold)
     return out
 
 
