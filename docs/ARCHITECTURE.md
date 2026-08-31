@@ -2,353 +2,168 @@
 
 ## 1. Purpose
 
-MasterShield is a defensive payment-security research laboratory implementing the challenge loop:
+MasterShield is an end-to-end synthetic payment-fraud defense laboratory implementing:
 
-`IDENTIFY -> GENERATE -> DEFEND -> EVALUATE -> ADAPT`
+`IDENTIFY → GENERATE → DEFEND → EVALUATE → ADAPT`
 
-The repository deliberately separates threat intelligence, synthetic data generation, machine-learning detection, evaluation, adversarial robustness testing, API serving, and the web interface.
+The system is designed to stress-test fraud defenses against GenAI-enabled payment-fraud scenarios without interacting with real payment systems.
 
-## 2. System overview
+## 2. System boundary
 
 ```mermaid
 flowchart TD
     UI[Next.js Web Prototype]
     API[FastAPI Research API]
+    CAT[Canonical Attack Catalog\n120 attacks / 12 families]
+    DISC[Safe Threat Discovery]
+    WORLD[Synthetic Payment World]
+    GEN[Scenario Generators]
+    FEAT[Feature Pipeline]
+    MODEL[Supervised Detector]
+    ANOM[IsolationForest]
+    GRAPH[Network / Graph Risk]
+    FUSE[Risk Fusion]
+    DEC[Decision Policy]
+    EVAL[Evaluation Engine]
+    ADV[Red-Team Search]
+    HARD[Blue-Team Hardening]
+    DB[(SQLite Experiment Registry)]
 
-    UI -->|REST / JSON| API
-
-    API --> CAT[Attack Intelligence]
-    API --> SIM[Simulation Engine]
-    API --> DET[Detection Service]
-    API --> ADV[Adversarial Engine]
-    API --> DB[(SQLite Experiment Registry)]
-
-    CAT --> ATT[120 Attack Definitions / 12 Families]
-    CAT --> DISC[Safe Threat Discovery]
-
-    SIM --> WORLD[Synthetic Payment World]
-    WORLD --> ENT[Customers / Accounts / Merchants / Devices / Beneficiaries]
-    WORLD --> TXN[Time-ordered Synthetic Transactions]
-    TXN --> SCN[Attack Scenarios / Multi-stage Campaigns]
-    SCN --> FEAT[Leakage-safe Feature Pipeline]
-
-    FEAT --> TAB[Supervised Model]
-    FEAT --> ANOM[Isolation Forest]
-    FEAT --> GRAPH[Causal Network / Graph Risk]
-    TAB --> FUSE[Risk Fusion]
+    UI --> API
+    API --> CAT
+    CAT --> DISC
+    CAT --> GEN
+    API --> WORLD
+    WORLD --> GEN
+    GEN --> FEAT
+    FEAT --> MODEL
+    FEAT --> ANOM
+    FEAT --> GRAPH
+    MODEL --> FUSE
     ANOM --> FUSE
     GRAPH --> FUSE
-    FUSE --> DEC[ALLOW / MONITOR / STEP-UP / BLOCK-REVIEW]
-
-    DET --> FEAT
-    ADV --> SEARCH[Hard-Variant Search]
-    SEARCH --> HARD[Training Augmentation]
-    HARD --> DET
-    DEC --> EVAL[Evaluation]
+    FUSE --> DEC
+    DEC --> EVAL
     EVAL --> ADV
+    ADV --> HARD
+    HARD --> MODEL
+    API --> DB
     EVAL --> DB
-    SIM --> DB
-
-    DISC --> SCN
+    HARD --> DB
 ```
 
-## 3. Repository boundaries
+## 3. Canonical attack intelligence
 
-```text
-app/                       Next.js routes and UI entrypoints
-components/                Reusable frontend UI
-lib/api/                   Typed client for the FastAPI backend
-types/                     Frontend domain types
+`data/attacks/attacks.json` is the single source of truth for the 120 synthetic defensive research scenarios. The backend validates IDs, family, severity, difficulty, rails, observable signals, defense mappings and generator IDs before serving them to the application.
 
-backend/app/api/           HTTP contract and request/response handling
-backend/app/identify/      Attack catalog, evidence metadata, safe discovery
-backend/app/simulation/    Synthetic financial-world entities and state
-backend/app/generators/    Attack-aware scenario and transaction generation
-backend/app/features/      Model features, behavioral features, graph signals
-backend/app/detection/     Model training, inference, fusion and explanations
-backend/app/evaluation/    Metrics, threshold sweeps and grouped evaluation
-backend/app/adversarial/   Defensive mutation, hard-variant search and hardening
-backend/app/storage/       SQLite experiment registry
-backend/tests/             Backend tests
-
-data/attacks/             Canonical attack catalog
-scripts/                   Reproducible training/evaluation/benchmark commands
-ml/models/                 Locally generated model artifacts (ignored by git)
-ml/results/                Locally generated experiment outputs (ignored by git)
-```
+The integrated frontend obtains attack records through `lib/api/` and FastAPI rather than maintaining a second operational attack catalog.
 
 ## 4. Identify layer
 
-The canonical source is `data/attacks/attacks.json`. The backend validates each entry using Pydantic and exposes the catalog through `/api/attacks` and `/api/catalog/summary`.
-
-Each attack contains:
-
-- stable attack ID
-- family
-- safe description
-- severity
-- difficulty
-- payment rails
-- AI capability metadata
-- observable detection signals
-- defense mappings
-- novelty score
-- evidence status
-- generator ID
-
-The `generator_id` is the bridge from research taxonomy to executable synthetic simulation logic.
-
-The repository currently contains 120 attack definitions spanning 12 families. Catalog tests enforce a minimum of 120 unique structured entries.
+`backend/app/identify/` loads the canonical catalog and provides safe composite-threat discovery. Discovery recombines existing threat attributes into non-operational hypotheses for simulation and defensive research.
 
 ## 5. Generate layer
 
-### 5.1 Synthetic payment world
+`backend/app/simulation/` creates synthetic customers, accounts, merchants, devices, beneficiaries and transaction history.
 
-`backend/app/simulation/entities.py` creates deterministic synthetic entities:
+`backend/app/generators/` maps attack definitions onto reusable generator families and injects attack-specific behavioral, transactional, contextual and network signals.
 
-- customers
-- accounts
-- merchants
-- devices
-- beneficiaries
-
-The world is seeded so experiments are reproducible.
-
-### 5.2 Transaction history
-
-`backend/app/generators/transaction.py` generates time-ordered synthetic transactions across eight modeled rails:
-
-- UPI
-- CARD
-- WALLET
-- IMPS
-- NEFT
-- RTGS
-- BNPL
-- CROSS_BORDER
-
-Behavioral quantities such as one-hour and 24-hour velocity are derived from prior events in the synthetic history rather than assigned as arbitrary labels.
-
-### 5.3 Attack scenarios
-
-`backend/app/generators/scenarios.py` maps each catalog attack to a reusable generator family. A generator modifies synthetic telemetry according to the selected attack's signals, family, novelty, severity and difficulty.
-
-Supported families include identity/KYC, social engineering, account takeover, merchant abuse, transaction evasion, AML/mule behavior, payment-instrument abuse, API/digital abuse, behavioral/device evasion, cross-channel scenarios, autonomous/agentic fraud, and synthetic-content scenarios.
-
-### 5.4 Multi-stage campaigns
-
-Cross-channel and autonomous scenarios may share a `scenario_id` and ordered `scenario_stage` values so a payment can be evaluated as part of a broader synthetic campaign rather than as an isolated row. These metadata fields are retained for evaluation/context but are deliberately excluded from the detector feature matrix.
+Generation is seeded for reproducibility and retains ground-truth/attack metadata for evaluation only.
 
 ## 6. Feature layer
 
-`backend/app/features/pipeline.py` converts raw synthetic events into the model matrix.
+`backend/app/features/pipeline.py` derives transaction, behavioral, identity/device, contextual and network signals.
 
-The current feature schema contains observable payment, behavioral, identity/device/context, and causal network signals. Ground-truth and attack metadata are explicitly excluded.
+Ground-truth and attack metadata are explicitly excluded from the model feature matrix, including:
 
-### Transaction
+- `ground_truth`
+- `attack_id`
+- `attack_family`
+- `attack_difficulty`
+- `attack_novelty`
+- `attack_severity`
+- `attack_name`
+- `scenario_id`
+- `scenario_stage`
+- `multi_stage_scenario`
 
-- amount
-- amount z-score against the synthetic account baseline
-- one-hour and 24-hour velocity
-- beneficiary age
-- account age
-- normal daily transaction volume
+## 7. Detection layer
 
-### Behavioral
+`backend/app/detection/model.py` combines:
 
-- behavioral deviation
-- geographic distance
-- cross-rail activity
-- amount/behavior interaction
-- velocity and account-age flags
+- `HistGradientBoostingClassifier`
+- `IsolationForest`
+- synthetic graph risk
 
-### Identity/device/context
-
-- device trust
-- device reuse
-- identity consistency
-- merchant risk
-- urgency
-- approval-path change
-- content risk
-
-### Network / AML
-
-The graph feature module derives causal relationship signals such as:
-
-- account/beneficiary degree
-- device reuse
-- beneficiary fan-out
-- account outflow
-- beneficiary inflow
-- counterparty count
-- network concentration
-- network risk
-
-Network features are computed from transactions available up to the current event to reduce temporal leakage.
-
-## 7. Defend layer
-
-The detector is implemented in `backend/app/detection/model.py`.
-
-### Supervised model
-
-A `HistGradientBoostingClassifier` learns a fraud probability from the leakage-safe feature matrix.
-
-### Behavioral anomaly model
-
-An `IsolationForest` provides an independent anomaly score. Its calibration values are learned from training data and reused at inference time rather than normalized against the incoming batch.
-
-### Graph risk
-
-A bounded graph-risk feature summarizes synthetic relationship risk for account/device/beneficiary networks.
-
-### Risk fusion
-
-The service combines the three components into a bounded risk score:
+The current detector version is **4.3**.
 
 ```text
-final risk = 0.68 * supervised
-           + 0.17 * anomaly
-           + 0.15 * graph
+risk = 0.68 * supervised_probability
+     + 0.17 * anomaly_score
+     + 0.15 * graph_signal
 ```
 
-These weights are part of the prototype detector and can be changed for experiments.
+Risk is bounded to `[0, 1]` and mapped to configurable operational decisions.
 
-The decision layer maps risk to:
+The model stores its feature schema, anomaly calibration and feature importance. Loading rejects stale or metadata-leaking artifacts and refreshes the model when required.
 
-```text
-ALLOW
-MONITOR
-STEP_UP
-BLOCK_REVIEW
-```
+## 8. Evaluation layer
 
-### Explainability
+The repository evaluates by:
 
-For each prediction, the detector returns the top contributing model features and a normalized signal-strength interpretation suitable for the Investigation UI.
-
-## 8. Evaluate layer
-
-Evaluation is intentionally more rigorous than one random accuracy number.
-
-The repository computes:
-
-- precision
-- recall
-- F1
-- ROC-AUC
-- PR-AUC
-- false-positive rate
-- false-negative rate
-- TP/TN/FP/FN
-- threshold sweeps
-- operating-threshold selection
-- performance by attack
-- performance by family
-- performance by payment rail
-- performance by difficulty
-- inference latency
-
-### Unseen-family protocol
-
-`scripts/evaluate_unseen.py` holds out complete attack families from training and evaluates them separately at higher difficulty/adaptation. This is intended to measure generalization to attack families not represented in the training set.
-
-### Difficulty benchmark
-
-`scripts/benchmark.py` evaluates low, medium, high and very-high difficulty conditions and reports per-rail metrics.
-
-## 9. Adapt layer
-
-The red-team robustness loop is implemented under `backend/app/adversarial/`.
-
-### Hard-variant search
-
-The search engine starts from synthetic fraud events and creates bounded feature-space mutations. Candidate variants are scored by the detector; lower-risk fraud variants are retained as harder synthetic cases.
-
-### Hardening protocol
-
-`harden_detector()` separates:
-
-```text
-Training population
-       |
-       +---- Red-team search/augmentation population
-       |
-       +---- Untouched final test population
-```
-
-The detector is retrained with selected hard variants, but the final test population remains untouched throughout the hardening rounds.
-
-## 10. API layer
-
-FastAPI is the stable boundary between the frontend and research engine.
-
-Primary routes:
-
-```text
-GET  /health
-GET  /api/catalog/summary
-GET  /api/catalog/discover
-GET  /api/attacks
-GET  /api/attacks/{attack_id}
-
-POST /api/simulate
-GET  /api/simulations/{simulation_id}
-GET  /api/simulations/{simulation_id}/events
-GET  /api/simulations/{simulation_id}/results
-GET  /api/simulations/{simulation_id}/rounds
-
-POST /api/detect
-POST /api/predict
-GET  /api/experiments/{experiment_id}
-GET  /api/models/current
-
-GET  /api/transactions/{transaction_id}
-GET  /api/transactions/{transaction_id}/assessment
-
-POST /api/adversarial/search
-POST /api/adversarial/harden
-```
-
-The API returns JSON-safe values and validates public request parameters with Pydantic models.
-
-## 11. Experiment persistence
-
-SQLite stores lightweight experiment metadata:
-
-- simulation runs
-- metrics
-- closed-loop rounds
-- model version
+- attack
+- family
+- difficulty
+- payment rail
 - threshold
-- seeds and configuration
+- unseen family
+- adversarial condition
 
-The actual database is ignored by git; it is regenerated locally.
+Metrics include precision, recall, F1, ROC-AUC, PR-AUC, false-positive rate, false-negative rate and confusion-matrix counts.
 
-## 12. Frontend boundary
+The standard synthetic evaluation is treated as a **distribution/separation diagnostic**, not as evidence of production fraud performance.
+
+The primary generalization evidence is the held-out-family experiment, while the closed-loop experiment measures robustness under red-team search and hard-case augmentation.
+
+## 9. Adaptive hardening
+
+The hardening workflow maintains an outer split:
+
+```text
+60% TRAINING
+20% RED-TEAM SEARCH
+20% UNTOUCHED TEST
+```
+
+An internal calibration split is taken from the training population to select an operating threshold subject to a false-positive-rate constraint. The final model is refit on the current training population, while the untouched test set remains isolated.
+
+Each round:
+
+1. score synthetic fraud candidates;
+2. search bounded mutations for low-risk cases;
+3. augment training with selected hard cases;
+4. recalibrate the operating threshold using training-only data;
+5. refit the detector;
+6. score the untouched test set.
+
+This avoids selecting the test threshold from the final test population.
+
+## 10. Frontend boundary
 
 The Next.js application uses `lib/api/` as the operational client boundary. `NEXT_PUBLIC_API_URL` selects the backend.
 
-The legacy TypeScript simulation engine and legacy 125-entry attack dataset are retained only as reference/compatibility material; they are not the operational source of truth for the integrated routes.
+No second client-side attack catalog or simulation engine is required for the integrated application; the canonical backend catalog and simulation/detection APIs are the operational source of truth.
 
-## 13. Reproducibility
+## 11. Storage
 
-The default backend experiment seed is `829134`. Key experiment commands are documented in the root README and can be executed independently or with `python scripts/run_all.py` after setting the repository root on `PYTHONPATH`.
+The SQLite registry stores simulation, experiment and closed-loop metadata. Generated datasets and model artifacts are local reproducibility outputs and are ignored by git.
 
-The model training script records:
+## 12. Reproducibility
 
-- model version
-- seed
-- training/validation sizes
-- operating threshold
-- feature list
-- feature importance
+The default experiment seed is `829134`. Key experiment commands are documented in the root README and `docs/REPRODUCIBILITY.md`.
 
-The evaluation scripts record the seed, model version and dataset configuration with their results.
+The model metadata records version, seed, training/validation sizes, operating threshold, feature schema and feature importance.
 
-## 14. Safety boundary
+## 13. Safety boundary
 
-MasterShield is a synthetic defensive security research environment. It does not execute real payment attacks, interact with banks or merchants, collect credentials, contact victims, or generate operational phishing/deepfake infrastructure.
-
-Attack definitions describe threat concepts at a defensive simulation level; generated events are synthetic telemetry used for controlled model evaluation.
+All transactions, identities, accounts, devices and attack scenarios are synthetic. The platform does not execute payment attacks, contact victims, collect credentials or interact with live financial systems.
