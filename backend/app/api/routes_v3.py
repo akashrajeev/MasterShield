@@ -17,7 +17,9 @@ from ..evaluation.metrics import metrics_by_group, threshold_sweep
 from ..features.network import graph_summary
 from ..features.pipeline import build_features
 from ..generators.scenarios import generate_attack_scenario
+from ..generators.catalog import catalog_summary as generator_summary
 from ..identify.catalog import load_attacks
+from ..identify.discovery import discover_hypotheses
 from ..schemas import DetectionRequest, PredictionRequest, SimulationConfig
 from ..storage.db import (
     get_experiment,
@@ -92,6 +94,18 @@ def catalog_summary():
         "critical_count": sum(a.severity == "critical" for a in items),
         "very_high_difficulty_count": sum(a.difficulty == "very-high" for a in items),
         "average_novelty": round(sum(a.novelty_score for a in items) / max(len(items), 1), 4),
+        "generators": generator_summary(),
+    }
+
+
+@router.get("/catalog/discover")
+def catalog_discover(limit: int = 20):
+    limit = max(1, min(limit, 50))
+    findings = discover_hypotheses(load_attacks(), limit)
+    return {
+        "count": len(findings),
+        "hypotheses": [finding.__dict__ for finding in findings],
+        "safe_simulation_only": True,
     }
 
 
