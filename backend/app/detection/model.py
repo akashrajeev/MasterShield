@@ -26,13 +26,7 @@ class Detector:
     }
 
     def __init__(self) -> None:
-        self.classifier = HistGradientBoostingClassifier(
-            max_iter=220,
-            learning_rate=.06,
-            max_leaf_nodes=31,
-            l2_regularization=.30,
-            random_state=42,
-        )
+        self.classifier = HistGradientBoostingClassifier(max_iter=220, learning_rate=.06, max_leaf_nodes=31, l2_regularization=.30, random_state=42)
         self.anomaly = IsolationForest(n_estimators=180, contamination=.05, random_state=42)
         self.fitted = False
         self.feature_names: list[str] = []
@@ -80,11 +74,7 @@ class Detector:
     def component_scores(self, X) -> dict[str, np.ndarray]:
         if not self.fitted:
             raise RuntimeError("Detector must be fitted before inference")
-        return {
-            "supervised": self.classifier.predict_proba(X)[:, 1],
-            "anomaly": self._anomaly_score(X),
-            "graph": np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X)),
-        }
+        return {"supervised": self.classifier.predict_proba(X)[:, 1], "anomaly": self._anomaly_score(X), "graph": np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X))}
 
     def evaluate(self, X, y, threshold=.5):
         scores = self.predict_scores(X)
@@ -93,14 +83,7 @@ class Detector:
         tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
         auc = roc_auc_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         pr_auc = average_precision_score(y, scores) if len(np.unique(y)) > 1 else 0.0
-        return {
-            "precision": _bounded(precision), "recall": _bounded(recall), "f1": _bounded(f1),
-            "roc_auc": _bounded(auc), "pr_auc": _bounded(pr_auc),
-            "false_positive_rate": _bounded(fp / max(fp + tn, 1)),
-            "false_negative_rate": _bounded(fn / max(fn + tp, 1)),
-            "true_positives": int(tp), "true_negatives": int(tn),
-            "false_positives": int(fp), "false_negatives": int(fn),
-        }
+        return {"precision": _bounded(precision), "recall": _bounded(recall), "f1": _bounded(f1), "roc_auc": _bounded(auc), "pr_auc": _bounded(pr_auc), "false_positive_rate": _bounded(fp / max(fp + tn, 1)), "false_negative_rate": _bounded(fn / max(fn + tp, 1)), "true_positives": int(tp), "true_negatives": int(tn), "false_positives": int(fp), "false_negatives": int(fn)}
 
     def decisions(self, scores: Iterable[float], threshold=.5) -> list[str]:
         return [decision(float(score), threshold) for score in scores]
@@ -133,4 +116,11 @@ class Detector:
     def load(cls, path: str | Path) -> "Detector":
         model = joblib.load(path)
         if not isinstance(model, cls): raise TypeError("model artifact is not a MasterShield Detector")
+        if model.VERSION != cls.VERSION or cls.FORBIDDEN_FEATURES.intersection(model.feature_names):
+            from ..generators.scenarios import generate_attack_scenario
+            from ..identify.catalog import load_attacks
+            from ..features.pipeline import build_features
+            attacks = load_attacks()
+            train = generate_attack_scenario(12000, 829233, [attack.id for attack in attacks], .12, "high", "static", "medium")
+            return cls().fit(build_features(train), train.ground_truth)
         return model
