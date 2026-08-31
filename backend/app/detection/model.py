@@ -13,13 +13,9 @@ from .thresholds import decision
 
 
 class Detector:
-    """Reproducible synthetic-payment fraud detector.
+    """Reproducible synthetic-payment fraud detector with fused risk signals."""
 
-    The model combines a supervised probability with a one-class anomaly signal.
-    It is deliberately small enough for local reproduction and later live-demo use.
-    """
-
-    VERSION = "4.0"
+    VERSION = "4.1"
 
     def __init__(self) -> None:
         self.classifier = HistGradientBoostingClassifier(
@@ -73,17 +69,31 @@ class Detector:
         self.fitted = True
         return self
 
-    def predict_scores(self, X):
-        if not self.fitted:
-            raise RuntimeError("Detector must be fitted before inference")
-        supervised = self.classifier.predict_proba(X)[:, 1]
+    def _anomaly_score(self, X):
         raw = -self.anomaly.score_samples(X)
-        anomaly = np.clip(
+        return np.clip(
             (raw - self.anomaly_min) / (self.anomaly_max - self.anomaly_min),
             0,
             1,
         )
-        return np.clip(.82 * supervised + .18 * anomaly, 0, 1)
+
+    def predict_scores(self, X):
+        if not self.fitted:
+            raise RuntimeError("Detector must be fitted before inference")
+        supervised = self.classifier.predict_proba(X)[:, 1]
+        anomaly = self._anomaly_score(X)
+        graph = np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X))
+        # Explicitly retain a graph/network component in the final risk score.
+        return np.clip(.68 * supervised + .17 * anomaly + .15 * graph, 0, 1)
+
+    def component_scores(self, X) -> dict[str, np.ndarray]:
+        if not self.fitted:
+            raise RuntimeError("Detector must be fitted before inference")
+        return {
+            "supervised": self.classifier.predict_proba(X)[:, 1],
+            "anomaly": self._anomaly_score(X),
+            "graph": np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X)),
+        }
 
     def evaluate(self, X, y, threshold=.5):
         scores = self.predict_scores(X)
@@ -111,7 +121,6 @@ class Detector:
 
     @staticmethod
     def _signal_strength(name: str, value: float) -> float:
-        """Put heterogeneous telemetry onto a comparable 0..1 explanation scale."""
         v = float(value)
         if name in {"device_trust_score", "identity_consistency"}:
             return float(np.clip(1 - v, 0, 1))
