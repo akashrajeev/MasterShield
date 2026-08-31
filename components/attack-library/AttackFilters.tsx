@@ -40,12 +40,14 @@ export function AttackFilters({
   filters,
   onChange,
   collapsed,
-  onToggle
+  onToggle,
+  attackCount = 120
 }: {
   filters: Filters;
   onChange: (filters: Filters) => void;
   collapsed: boolean;
   onToggle: () => void;
+  attackCount?: number;
 }) {
   const hasFilters = Object.values(filters).some(items => items.length);
   const toggle = (key: keyof Filters, item: string) => {
@@ -72,7 +74,7 @@ export function AttackFilters({
       <div className="filter-header">
         <div>
           <h2>Taxonomy Filters</h2>
-          <p>Refine across 125+ attack scenarios</p>
+          <p>Refine across {attackCount} attack scenarios</p>
         </div>
         <button onClick={onToggle} aria-label="Collapse filters">‹</button>
       </div>
@@ -111,4 +113,3 @@ export function AttackFilters({
     </aside>
   );
 }
-
