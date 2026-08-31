@@ -6,4 +6,6 @@ COPY backend /app/backend
 COPY data /app/data
 COPY scripts /app/scripts
 COPY ml /app/ml
-CMD ["uvicorn","backend.app.main_v3:app","--host","0.0.0.0","--port","8000"]
+ENV PYTHONPATH=/app
+EXPOSE 8000
+CMD ["uvicorn","backend.app.main:app","--host","0.0.0.0","--port","8000"]
