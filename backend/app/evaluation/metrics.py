@@ -1,10 +1,35 @@
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from __future__ import annotations
 
-def binary_metrics(y_true, scores, threshold=.5):
-    pred = (scores >= threshold).astype(int)
+import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
+
+
+def binary_metrics(y_true, scores, threshold: float = .5) -> dict:
+    y = np.asarray(y_true).astype(int)
+    s = np.asarray(scores, dtype=float)
+    pred = (s >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
     return {
-        "precision": float(precision_score(y_true, pred, zero_division=0)),
-        "recall": float(recall_score(y_true, pred, zero_division=0)),
-        "f1": float(f1_score(y_true, pred, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y_true, scores)),
+        "precision": float(precision_score(y, pred, zero_division=0)),
+        "recall": float(recall_score(y, pred, zero_division=0)),
+        "f1": float(f1_score(y, pred, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y, s)) if len(np.unique(y)) > 1 else 0.0,
+        "false_positive_rate": float(fp / max(fp + tn, 1)),
+        "false_negative_rate": float(fn / max(fn + tp, 1)),
+        "true_positives": int(tp), "true_negatives": int(tn),
+        "false_positives": int(fp), "false_negatives": int(fn),
     }
+
+
+def metrics_by_group(df, scores, group_col: str, threshold: float = .5) -> dict:
+    out = {}
+    scores_arr = np.asarray(scores)
+    for key, group in df.groupby(group_col, dropna=False):
+        idx = group.index.to_numpy()
+        out[str(key)] = binary_metrics(df.loc[idx, "ground_truth"], scores_arr[idx], threshold)
+    return out
+
+
+def threshold_sweep(y_true, scores, thresholds: list[float] | None = None) -> list[dict]:
+    thresholds = thresholds or [round(x, 2) for x in np.arange(.30, .91, .05)]
+    return [{"threshold": t, **binary_metrics(y_true, scores, t)} for t in thresholds]
