@@ -10,6 +10,8 @@ BASE_FEATURES = [
     "beneficiary_age_days", "device_trust_score", "behavioral_deviation", "merchant_risk",
     "account_age_days", "normal_daily_txns", "network_risk", "device_reuse_score",
     "beneficiary_fanout_score", "account_beneficiary_degree", "beneficiary_account_degree",
+    "account_outflow", "beneficiary_inflow", "account_to_beneficiary_share",
+    "beneficiary_amount_share", "counterparty_count", "network_amount_concentration",
     "urgency_score", "approval_path_change", "content_risk", "cross_rail_activity",
     "identity_consistency", "scenario_stage",
 ]
@@ -22,7 +24,7 @@ FEATURE_NAMES = BASE_FEATURES + [
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert synthetic event history into a stable, model-ready feature matrix."""
+    """Convert synthetic event history into a stable causal model-ready feature matrix."""
     out = derive_network_features(df.copy())
     for col in BASE_FEATURES:
         if col not in out.columns:
@@ -39,8 +41,10 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     x["behavioral_amount_interaction"] = x["behavioral_deviation"] * x["amount_log"]
     x["multi_stage_scenario"] = (x["scenario_stage"] > 1).astype(int)
     x["graph_signal"] = (
-        .40 * x["network_risk"].clip(0, 1)
-        + .30 * (x["device_reuse_score"] / 5).clip(0, 1)
-        + .30 * (x["beneficiary_fanout_score"] / 8).clip(0, 1)
+        .30 * x["network_risk"].clip(0, 1)
+        + .20 * (x["device_reuse_score"] / 5).clip(0, 1)
+        + .20 * (x["beneficiary_fanout_score"] / 8).clip(0, 1)
+        + .15 * x["network_amount_concentration"].clip(0, 1)
+        + .15 * (1 / (x["counterparty_count"] + 1)).clip(0, 1)
     ).clip(0, 1)
     return x.replace([np.inf, -np.inf], 0).fillna(0)
