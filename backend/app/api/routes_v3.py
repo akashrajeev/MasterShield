@@ -15,7 +15,7 @@ from ..features.network import graph_summary
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
 from ..schemas import DetectionRequest, SimulationConfig
-from ..storage.db import init_db, save_metrics, save_round, save_simulation
+from ..storage.db import init_db, save_metrics, save_simulation
 
 router = APIRouter(prefix="/api", tags=["mastershield"])
 MODEL_PATH = Path("ml/models/detector.joblib")
@@ -63,36 +63,37 @@ def simulate(config: SimulationConfig):
         "adaptation": config.adaptation, "noise": config.noise,
         "status": "completed", "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    sample = df.head(100).where(df.head(100).notna(), None).to_dict(orient="records")
     return {
         "simulation_id": simulation_id, "seed": config.seed,
         "events_generated": len(df), "fraud_events": int(df.ground_truth.sum()),
-        "attack_count": len(ids_for(config)), "graph": graph_summary(df),
-        "sample": df.head(100).where(df.head(100).notna(), None).to_dict(orient="records"),
+        "attack_count": len(ids_for(config)), "graph": graph_summary(df), "sample": sample,
     }
 
 
 @router.post("/detect")
 def detect(config: DetectionRequest):
-    df, X, xte, yte, model = split_fit(config)
+    df, _, xte, yte, model = split_fit(config)
     scores = model.predict_scores(xte)
     metrics = model.evaluate(xte, yte, config.threshold)
     experiment_id = f"EXP-{config.seed}-{config.events}-{int(config.threshold * 100)}"
     init_db()
     save_metrics({
-        "experiment_id": experiment_id,
-        "simulation_id": f"SIM-{config.seed}-{config.events}",
-        "model_version": Detector.VERSION,
-        "threshold": config.threshold,
-        "metrics": metrics,
+        "experiment_id": experiment_id, "simulation_id": f"SIM-{config.seed}-{config.events}",
+        "model_version": Detector.VERSION, "threshold": config.threshold, "metrics": metrics,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    test_frame = df.iloc[xte.index].reset_index(drop=True)
     return {
-        "experiment_id": experiment_id,
-        "metrics": metrics,
-        "thresholds": threshold_sweep(yte, scores),
-        "by_attack": metrics_by_group(df.iloc[xte.index].reset_index(drop=True), scores, "attack_id", config.threshold) if "attack_id" in df else {},
-        "by_rail": metrics_by_group(df.iloc[xte.index].reset_index(drop=True), scores, "rail", config.threshold),
+        "experiment_id": experiment_id, "model_version": Detector.VERSION,
+        "metrics": metrics, "thresholds": threshold_sweep(yte, scores),
+        "by_attack": metrics_by_group(test_frame, scores, "attack_id", config.threshold),
+        "by_rail": metrics_by_group(test_frame, scores, "rail", config.threshold),
         "events": len(df), "test_events": len(xte),
+        "sample_predictions": [
+            {"transaction_id": str(test_frame.iloc[i]["transaction_id"]), "risk_score": float(scores[i]), "ground_truth": int(yte.iloc[i])}
+            for i in range(min(50, len(test_frame)))
+        ],
     }
 
 
@@ -110,7 +111,8 @@ def synthetic_transaction(transaction_id: str, seed: int = 829134, events: int =
     row = df[df.transaction_id.eq(transaction_id)]
     if row.empty:
         raise HTTPException(status_code=404, detail="synthetic transaction not found")
-    return row.iloc[0].where(row.iloc[0].notna(), None).to_dict()
+    payload = row.iloc[0].where(row.iloc[0].notna(), None).to_dict()
+    return {"synthetic": True, **payload}
 
 
 @router.post("/adversarial/search")
@@ -123,8 +125,13 @@ def adversarial_search(config: SimulationConfig):
 @router.post("/adversarial/harden")
 def adversarial_harden(config: SimulationConfig):
     df = build_dataset(config)
-    train, holdout = train_test_split(df, test_size=.25, random_state=config.seed, stratify=df["ground_truth"])
-    result = harden_detector(train.reset_index(drop=True), holdout.reset_index(drop=True), config.seed, rounds=3)
+    result = harden_detector(df, config.seed, rounds=3)
     result["final_detector"].save(MODEL_PATH)
-    safe = {"baseline": result["baseline"], "rounds": result["rounds"], "model_version": Detector.VERSION}
-    return safe
+    return {
+        "baseline": result["baseline"],
+        "rounds": result["rounds"],
+        "model_version": Detector.VERSION,
+        "train_events": result["train_events"],
+        "red_team_events": result["red_team_events"],
+        "untouched_test_events": result["untouched_test_events"],
+    }
