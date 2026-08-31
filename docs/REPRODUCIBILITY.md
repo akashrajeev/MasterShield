@@ -6,11 +6,11 @@ This document explains how to regenerate MasterShield's synthetic data, model ar
 
 Recommended:
 
-- Python 3.12
+- Python 3.11+ (the CI-tested environment is authoritative)
 - Node.js compatible with the repository's Next.js version
 - Git
 
-Python dependencies are pinned by version ranges in `backend/requirements.txt`.
+Python dependencies are defined in `backend/requirements.txt`.
 
 ## 2. Create the Python environment
 
@@ -26,13 +26,31 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
+### Import path
+
+The scripts import the repository's `backend` package. From a fresh clone, set the repository root on `PYTHONPATH` before running them.
+
+macOS/Linux:
+
+```bash
+export PYTHONPATH=.
+```
+
+Windows PowerShell:
+
+```powershell
+$env:PYTHONPATH = "."
+```
+
+Alternatively, run the commands from an environment/configuration that already exposes the repository root on the Python import path (as CI does).
+
 ## 3. Validate the attack catalog
 
 ```bash
 python scripts/validate_catalog.py
 ```
 
-The validation step checks that the catalog is sufficiently large, IDs are unique, generator mappings exist, and generator-family mappings are supported.
+The canonical catalog is `data/attacks/attacks.json`. The current validated target is 120 scenarios across 12 families. Legacy frontend/reference data may contain older counts and is not the operational source of truth.
 
 ## 4. Generate synthetic data
 
@@ -55,9 +73,9 @@ The generator is deterministic for a given configuration and seed. Data is synth
 python scripts/train_model.py
 ```
 
-The script trains the detector, selects an operating threshold under a false-positive constraint, and writes local artifacts under `ml/models/` and `ml/results/`.
+The detector feature set intentionally excludes scenario-generation metadata that would leak the fraud label. This is important: benchmark numbers should be regenerated after code changes rather than copied from older model artifacts.
 
-The generated model artifact is intentionally ignored by git so a clean clone can regenerate it rather than relying on an untracked binary.
+The script writes local artifacts under `ml/models/` and `ml/results/`.
 
 ## 6. Evaluate on a held-out test population
 
@@ -65,7 +83,7 @@ The generated model artifact is intentionally ignored by git so a clean clone ca
 python scripts/evaluate_model.py
 ```
 
-The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, as well as a threshold sweep and measured inference time.
+The output contains overall metrics plus breakdowns by attack, family, payment rail and difficulty, as well as threshold analysis and measured inference time.
 
 ## 7. Evaluate unseen attack families
 
@@ -89,7 +107,7 @@ The benchmark evaluates low, medium, high and very-high difficulty settings.
 python scripts/run_closed_loop.py
 ```
 
-The full hardening implementation maintains separate training, red-team search/augmentation, and untouched test populations.
+The hardening implementation maintains separate training, red-team search/augmentation, and untouched test populations.
 
 ## 10. Run everything
 
@@ -110,6 +128,8 @@ Then open:
 ```text
 http://localhost:8000/docs
 ```
+
+The API auto-retrains an in-memory detector when a saved artifact does not match the current feature schema/version, so local inference remains compatible after model feature changes. For documented benchmark results, explicitly rerun the training/evaluation scripts.
 
 ## 12. Run the frontend against the backend
 
@@ -134,7 +154,7 @@ For a documented experiment record, capture:
 
 - Git commit SHA
 - Python version
-- dependency lock/environment information
+- dependency environment
 - seed
 - attack IDs/families
 - event count
