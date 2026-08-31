@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import time
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from sklearn.model_selection import train_test_split
 
@@ -11,12 +12,13 @@ from ..adversarial.hardening import harden_detector
 from ..adversarial.search_v2 import find_hard_variants
 from ..detection.explain import explain_row
 from ..detection.model import Detector
+from ..detection.service import assess_frame, get_model
 from ..evaluation.metrics import metrics_by_group, threshold_sweep
 from ..features.network import graph_summary
 from ..features.pipeline import build_features
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
-from ..schemas import DetectionRequest, SimulationConfig
+from ..schemas import DetectionRequest, PredictionRequest, SimulationConfig
 from ..storage.db import (
     get_experiment,
     get_latest_metrics,
@@ -61,7 +63,7 @@ def split_fit(config: SimulationConfig):
     return df, X, X.iloc[test_idx], df.ground_truth.iloc[test_idx], model
 
 
-def annotate_attack_groups(df, attacks):
+def annotate_attack_groups(df: pd.DataFrame, attacks):
     by_id = {a.id: a for a in attacks}
     out = df.copy()
     out["attack_family"] = out["attack_id"].map(
@@ -200,19 +202,24 @@ def detect(config: DetectionRequest):
     metrics = model.evaluate(xte, yte, config.threshold)
     experiment_id = f"EXP-{config.seed}-{config.events}-{int(config.threshold * 100)}"
     init_db()
+    saved_metrics = {
+        **metrics,
+        "inference_ms": elapsed_ms,
+        "inference_ms_per_event": elapsed_ms / max(len(xte), 1),
+    }
     save_metrics({
         "experiment_id": experiment_id,
         "simulation_id": f"SIM-{config.seed}-{config.events}",
         "model_version": Detector.VERSION,
         "threshold": config.threshold,
-        "metrics": {**metrics, "inference_ms": elapsed_ms, "inference_ms_per_event": elapsed_ms / max(len(xte), 1)},
+        "metrics": saved_metrics,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     test_frame = annotate_attack_groups(df.iloc[xte.index].reset_index(drop=True), load_attacks())
     return {
         "experiment_id": experiment_id,
         "model_version": Detector.VERSION,
-        "metrics": {**metrics, "inference_ms": elapsed_ms, "inference_ms_per_event": elapsed_ms / max(len(xte), 1)},
+        "metrics": saved_metrics,
         "thresholds": threshold_sweep(yte, scores),
         "by_attack": metrics_by_group(test_frame, scores, "attack_id", config.threshold),
         "by_family": metrics_by_group(test_frame, scores, "attack_family", config.threshold),
@@ -230,6 +237,22 @@ def detect(config: DetectionRequest):
             }
             for i in range(min(50, len(test_frame)))
         ],
+    }
+
+
+@router.post("/predict")
+def predict(request: PredictionRequest):
+    frame = pd.DataFrame(request.events)
+    if frame.empty:
+        raise HTTPException(status_code=422, detail="events must not be empty")
+    if "transaction_id" not in frame.columns:
+        frame["transaction_id"] = [f"ROW_{index:06d}" for index in range(len(frame))]
+    results = assess_frame(frame, request.threshold, request.seed)
+    return {
+        "model_version": get_model(seed=request.seed).VERSION,
+        "threshold": request.threshold,
+        "count": len(results),
+        "results": results,
     }
 
 
@@ -277,12 +300,7 @@ def transaction_assessment(transaction_id: str, seed: int = 829134, events: int 
     if row.empty:
         raise HTTPException(status_code=404, detail="synthetic transaction not found")
 
-    if MODEL_PATH.exists():
-        model = Detector.load(MODEL_PATH)
-    else:
-        train = generate_attack_scenario(max(10000, events), seed + 99, [a.id for a in load_attacks()], .12, "high")
-        model = Detector().fit(build_features(train), train.ground_truth)
-
+    model = get_model(seed=seed)
     feature_row = build_features(row)
     score = float(model.predict_scores(feature_row)[0])
     explanation = model.explain(feature_row.iloc[0], score, threshold)
