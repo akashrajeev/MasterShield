@@ -1,0 +1,30 @@
+{
+  "title":"MasterShield Synthetic Payment Event",
+  "type":"object",
+  "required":["transaction_id","account_id","amount","rail","ground_truth"],
+  "properties":{
+    "transaction_id":{"type":"string"},
+    "account_id":{"type":"string"},
+    "merchant_id":{"type":"string"},
+    "device_id":{"type":"string"},
+    "beneficiary_id":{"type":"string"},
+    "amount":{"type":"number","minimum":0},
+    "rail":{"type":"string"},
+    "velocity_1h":{"type":"number","minimum":0},
+    "velocity_24h":{"type":"number","minimum":0},
+    "geo_distance_km":{"type":"number","minimum":0},
+    "beneficiary_age_days":{"type":"number","minimum":0},
+    "device_trust_score":{"type":"number","minimum":0,"maximum":1},
+    "behavioral_deviation":{"type":"number","minimum":0,"maximum":1},
+    "merchant_risk":{"type":"number","minimum":0,"maximum":1},
+    "identity_consistency":{"type":"number","minimum":0,"maximum":1},
+    "shared_device_count":{"type":"number","minimum":0},
+    "beneficiary_novelty":{"type":"number","minimum":0,"maximum":1},
+    "network_fan_in":{"type":"number","minimum":0},
+    "network_fan_out":{"type":"number","minimum":0},
+    "content_risk":{"type":"number","minimum":0,"maximum":1},
+    "ground_truth":{"type":"integer","enum":[0,1]},
+    "attack_id":{"type":["string","null"]},
+    "scenario_stage":{"type":"string"}
+  }
+}
