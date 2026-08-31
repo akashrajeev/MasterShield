@@ -8,10 +8,11 @@ from sklearn.model_selection import train_test_split
 
 from ..adversarial.hardening import harden_detector
 from ..adversarial.search_v2 import find_hard_variants
+from ..detection.explain import explain_row
 from ..detection.model import Detector
 from ..evaluation.metrics import binary_metrics, metrics_by_group, threshold_sweep
-from ..features.pipeline import build_features
 from ..features.network import graph_summary
+from ..features.pipeline import build_features
 from ..generators.scenarios import generate_attack_scenario
 from ..identify.catalog import load_attacks
 from ..schemas import DetectionRequest, SimulationConfig
@@ -32,9 +33,29 @@ def build_dataset(config: SimulationConfig):
 def split_fit(config: SimulationConfig):
     df = build_dataset(config)
     X = build_features(df)
-    xtr, xte, ytr, yte = train_test_split(X, df["ground_truth"], test_size=.25, random_state=config.seed, stratify=df["ground_truth"])
-    model = Detector().fit(xtr, ytr)
-    return df, X, xte, yte, model
+    train_idx, test_idx = train_test_split(range(len(df)), test_size=.25, random_state=config.seed, stratify=df["ground_truth"])
+    model = Detector().fit(X.iloc[train_idx], df.ground_truth.iloc[train_idx])
+    return df, X, X.iloc[test_idx], df.ground_truth.iloc[test_idx], model
+
+
+@router.get("/catalog/summary")
+def catalog_summary():
+    items = load_attacks()
+    family_counts: dict[str, int] = {}
+    rail_counts: dict[str, int] = {}
+    for attack in items:
+        family_counts[attack.family] = family_counts.get(attack.family, 0) + 1
+        for rail in attack.payment_rails:
+            rail_counts[rail] = rail_counts.get(rail, 0) + 1
+    return {
+        "attack_count": len(items),
+        "family_count": len(family_counts),
+        "families": family_counts,
+        "payment_rail_coverage": rail_counts,
+        "critical_count": sum(a.severity == "critical" for a in items),
+        "very_high_difficulty_count": sum(a.difficulty == "very-high" for a in items),
+        "average_novelty": sum(a.novelty_score for a in items) / max(len(items), 1),
+    }
 
 
 @router.get("/attacks")
@@ -115,6 +136,26 @@ def synthetic_transaction(transaction_id: str, seed: int = 829134, events: int =
     return {"synthetic": True, **payload}
 
 
+@router.get("/transactions/{transaction_id}/assessment")
+def transaction_assessment(transaction_id: str, seed: int = 829134, events: int = 10000, threshold: float = .5):
+    df = generate_attack_scenario(events, seed, [a.id for a in load_attacks()], .12, "high")
+    row = df[df.transaction_id.eq(transaction_id)]
+    if row.empty:
+        raise HTTPException(status_code=404, detail="synthetic transaction not found")
+    if MODEL_PATH.exists():
+        model = Detector.load(MODEL_PATH)
+    else:
+        train = generate_attack_scenario(max(10000, events), seed + 99, [a.id for a in load_attacks()], .12, "high")
+        model = Detector().fit(build_features(train), train.ground_truth)
+    feature_row = build_features(row)
+    score = float(model.predict_scores(feature_row)[0])
+    explanation = model.explain(feature_row.iloc[0], score, threshold)
+    explanation["observable_signals"] = explain_row(row.iloc[0], score)
+    explanation["attack_id"] = row.iloc[0].get("attack_id")
+    explanation["synthetic"] = True
+    return {**row.iloc[0].where(row.iloc[0].notna(), None).to_dict(), **explanation}
+
+
 @router.post("/adversarial/search")
 def adversarial_search(config: SimulationConfig):
     df, _, _, _, model = split_fit(config)
@@ -128,10 +169,7 @@ def adversarial_harden(config: SimulationConfig):
     result = harden_detector(df, config.seed, rounds=3)
     result["final_detector"].save(MODEL_PATH)
     return {
-        "baseline": result["baseline"],
-        "rounds": result["rounds"],
-        "model_version": Detector.VERSION,
-        "train_events": result["train_events"],
-        "red_team_events": result["red_team_events"],
-        "untouched_test_events": result["untouched_test_events"],
+        "baseline": result["baseline"], "rounds": result["rounds"],
+        "model_version": Detector.VERSION, "train_events": result["train_events"],
+        "red_team_events": result["red_team_events"], "untouched_test_events": result["untouched_test_events"],
     }
