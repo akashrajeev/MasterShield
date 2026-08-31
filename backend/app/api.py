@@ -5,6 +5,7 @@ from ..identify.catalog import load_attacks
 from ..generators.scenarios import generate_attack_scenario
 from ..features.pipeline import build_features
 from ..detection.model import Detector
+from ..adversarial.search import search_hard_variants
 
 router = APIRouter(prefix="/api")
 
@@ -25,10 +26,8 @@ def simulate(config: SimulationConfig):
     attack_ids = config.attack_ids or [a.id for a in load_attacks()]
     df = generate_attack_scenario(config.events, config.seed, attack_ids, config.fraud_rate, config.difficulty)
     return {
-        "simulation_id": f"SIM-{config.seed}-{config.events}",
-        "seed": config.seed,
-        "events_generated": len(df),
-        "fraud_events": int(df.ground_truth.sum()),
+        "simulation_id": f"SIM-{config.seed}-{config.events}", "seed": config.seed,
+        "events_generated": len(df), "fraud_events": int(df.ground_truth.sum()),
         "attack_count": len(attack_ids),
         "sample": df.head(25).where(df.head(25).notna(), None).to_dict(orient="records"),
     }
@@ -39,6 +38,23 @@ def detect(config: SimulationConfig):
     X = build_features(df)
     X_train, X_test, y_train, y_test = train_test_split(X, df.ground_truth, test_size=.25, random_state=config.seed, stratify=df.ground_truth)
     detector = Detector().fit(X_train, y_train)
-    metrics = detector.evaluate(X_test, y_test)
     scores = detector.predict_scores(X_test)
-    return {"metrics": metrics, "events": len(df), "test_events": len(X_test), "mean_risk": float(scores.mean())}
+    return {"metrics": detector.evaluate(X_test, y_test), "events": len(df), "test_events": len(X_test), "mean_risk": float(scores.mean())}
+
+@router.post("/closed-loop")
+def closed_loop(config: SimulationConfig):
+    attack_ids = config.attack_ids or [a.id for a in load_attacks()]
+    df = generate_attack_scenario(config.events, config.seed, attack_ids, config.fraud_rate, config.difficulty)
+    X = build_features(df)
+    X_train, X_test, y_train, y_test = train_test_split(X, df.ground_truth, test_size=.25, random_state=config.seed, stratify=df.ground_truth)
+    detector = Detector().fit(X_train, y_train)
+    baseline = detector.evaluate(X_test, y_test)
+    hard, history = search_hard_variants(detector, df[df.ground_truth == 1].copy(), config.seed + 1, rounds=3, population=5)
+    hard_scores = detector.predict_scores(build_features(hard))
+    return {
+        "baseline": baseline,
+        "red_team_rounds": history,
+        "hard_variants": len(hard),
+        "hard_variant_mean_risk": float(hard_scores.mean()),
+        "hard_variant_miss_rate": float((hard_scores < .5).mean()),
+    }
