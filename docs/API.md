@@ -28,7 +28,7 @@ Example response:
 
 ### `GET /api/catalog/summary`
 
-Returns catalog counts, family distribution, rail coverage, critical/high-difficulty counts, average novelty and generator information.
+Returns canonical catalog counts, family distribution, rail coverage, critical/high-difficulty counts, average novelty and generator information.
 
 ### `GET /api/catalog/discover?limit=20`
 
@@ -36,11 +36,11 @@ Returns safe, non-operational composite threat hypotheses for defensive research
 
 ### `GET /api/attacks`
 
-Returns the canonical attack catalog.
+Returns the canonical attack catalog from `data/attacks/attacks.json`.
 
 ### `GET /api/attacks/{attack_id}`
 
-Returns one canonical attack definition.
+Returns one canonical attack definition. Current canonical IDs use family prefixes such as `ID-01`, `SE-01`, `ATO-01`, `TE-01` and `AML-01`; legacy IDs from earlier frontend fixtures are not part of the canonical API.
 
 ## Simulation
 
@@ -52,7 +52,7 @@ Request body:
 {
   "events": 1000,
   "seed": 829134,
-  "attack_ids": ["ID-01", "T-01"],
+  "attack_ids": ["ID-01", "TE-01"],
   "fraud_rate": 0.12,
   "difficulty": "high",
   "adaptation": "static",
@@ -77,6 +77,10 @@ Returns a paginated deterministic view of generated synthetic events.
 
 Returns simulation metadata, latest experiment metrics and closed-loop rounds.
 
+### `GET /api/simulations/{simulation_id}/rounds`
+
+Returns persisted adversarial hardening rounds for the simulation.
+
 ## Detection
 
 ### `POST /api/detect`
@@ -85,7 +89,7 @@ Runs the full training/test evaluation pipeline for the supplied simulation conf
 
 ### `POST /api/predict`
 
-Runs model-backed point predictions over up to 1000 supplied synthetic events.
+Runs model-backed point predictions over supplied synthetic events.
 
 Example:
 
@@ -130,7 +134,7 @@ Runs bounded synthetic hard-variant search against the detector.
 
 ### `POST /api/adversarial/harden`
 
-Runs multi-round hardening with separate training, red-team and untouched test populations. The response includes baseline metrics and per-round results.
+Runs multi-round hardening with separate training, red-team and untouched test populations. Each round returns a `metrics` object containing precision, recall, F1, ROC-AUC, PR-AUC and false-positive/negative rates.
 
 ## Experiment IDs
 
