@@ -11,3 +11,8 @@ def test_hardening_reports_isolated_test_split():
     assert result["red_team_events"] > 0
     assert result["untouched_test_events"] > 0
     assert len(result["rounds"]) == 2
+    assert 0.2 <= result["rounds"][0]["operating_threshold"] <= 0.9
+    assert 0.2 <= result["rounds"][1]["operating_threshold"] <= 0.9
+    for round_result in result["rounds"]:
+        metrics = round_result["metrics"]
+        assert all(value == value for value in metrics.values() if isinstance(value, float))
