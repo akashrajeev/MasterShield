@@ -7,7 +7,12 @@ import joblib
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier, IsolationForest
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    confusion_matrix,
+    precision_recall_fscore_support,
+    roc_auc_score,
+)
 
 from .thresholds import decision
 
@@ -15,7 +20,7 @@ from .thresholds import decision
 class Detector:
     """Reproducible synthetic-payment fraud detector with fused risk signals."""
 
-    VERSION = "4.1"
+    VERSION = "4.2"
 
     def __init__(self) -> None:
         self.classifier = HistGradientBoostingClassifier(
@@ -83,7 +88,6 @@ class Detector:
         supervised = self.classifier.predict_proba(X)[:, 1]
         anomaly = self._anomaly_score(X)
         graph = np.asarray(X["graph_signal"], dtype=float) if "graph_signal" in X.columns else np.zeros(len(X))
-        # Explicitly retain a graph/network component in the final risk score.
         return np.clip(.68 * supervised + .17 * anomaly + .15 * graph, 0, 1)
 
     def component_scores(self, X) -> dict[str, np.ndarray]:
@@ -103,11 +107,13 @@ class Detector:
         )
         tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
         auc = roc_auc_score(y, scores) if len(np.unique(y)) > 1 else 0.0
+        pr_auc = average_precision_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         return {
             "precision": float(precision),
             "recall": float(recall),
             "f1": float(f1),
             "roc_auc": float(auc),
+            "pr_auc": float(pr_auc),
             "false_positive_rate": float(fp / max(fp + tn, 1)),
             "false_negative_rate": float(fn / max(fn + tp, 1)),
             "true_positives": int(tp),
