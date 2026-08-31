@@ -11,19 +11,23 @@ BASE_FEATURES = [
     "account_age_days", "normal_daily_txns", "network_risk", "device_reuse_score",
     "beneficiary_fanout_score", "account_beneficiary_degree", "beneficiary_account_degree",
     "urgency_score", "approval_path_change", "content_risk", "cross_rail_activity",
+    "identity_consistency", "scenario_stage",
 ]
 
 FEATURE_NAMES = BASE_FEATURES + [
     "amount_log", "velocity_ratio", "new_beneficiary", "low_device_trust",
-    "high_velocity", "large_geo_jump", "young_account_flag", "behavioral_amount_interaction",
+    "high_velocity", "large_geo_jump", "young_account_flag",
+    "behavioral_amount_interaction", "multi_stage_scenario", "graph_signal",
 ]
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert synthetic event history into a stable, model-ready feature matrix."""
     out = derive_network_features(df.copy())
     for col in BASE_FEATURES:
         if col not in out.columns:
             out[col] = 0.0
+
     x = out[BASE_FEATURES].copy()
     x["amount_log"] = np.log1p(x["amount"].clip(lower=0))
     x["velocity_ratio"] = x["velocity_1h"] / (x["velocity_24h"] + 1)
@@ -33,4 +37,10 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     x["large_geo_jump"] = (x["geo_distance_km"] >= 50).astype(int)
     x["young_account_flag"] = (x["account_age_days"] < 30).astype(int)
     x["behavioral_amount_interaction"] = x["behavioral_deviation"] * x["amount_log"]
+    x["multi_stage_scenario"] = (x["scenario_stage"] > 1).astype(int)
+    x["graph_signal"] = (
+        .40 * x["network_risk"].clip(0, 1)
+        + .30 * (x["device_reuse_score"] / 5).clip(0, 1)
+        + .30 * (x["beneficiary_fanout_score"] / 8).clip(0, 1)
+    ).clip(0, 1)
     return x.replace([np.inf, -np.inf], 0).fillna(0)
