@@ -14,11 +14,23 @@ PROFILES: dict[str, dict[str, float]] = {
     "transaction": {"behavioral": .46, "merchant": .18, "beneficiary": .42, "device": .96, "velocity": 1.55, "geo": 1.20, "content": .12},
     "aml": {"behavioral": .32, "merchant": .28, "beneficiary": .62, "device": .82, "velocity": 1.45, "geo": 1.35, "content": .08},
     "instrument": {"behavioral": .36, "merchant": .22, "beneficiary": .20, "device": .62, "velocity": 1.65, "geo": 1.10, "content": .12},
+    "api": {"behavioral": .40, "merchant": .14, "beneficiary": .22, "device": .72, "velocity": 1.80, "geo": 1.05, "content": .05},
     "api-abuse": {"behavioral": .40, "merchant": .14, "beneficiary": .22, "device": .72, "velocity": 1.80, "geo": 1.05, "content": .05},
     "behavioral": {"behavioral": .62, "merchant": .08, "beneficiary": .25, "device": .55, "velocity": 1.15, "geo": 1.55, "content": .05},
     "cross-channel": {"behavioral": .48, "merchant": .25, "beneficiary": .58, "device": .62, "velocity": 1.50, "geo": 1.65, "content": .52},
+    "cross_channel": {"behavioral": .48, "merchant": .25, "beneficiary": .58, "device": .62, "velocity": 1.50, "geo": 1.65, "content": .52},
     "autonomous": {"behavioral": .40, "merchant": .25, "beneficiary": .48, "device": .72, "velocity": 1.45, "geo": 1.25, "content": .48},
+    "content": {"behavioral": .30, "merchant": .20, "beneficiary": .45, "device": .92, "velocity": 1.15, "geo": 1.10, "content": .92},
     "synthetic-content": {"behavioral": .30, "merchant": .20, "beneficiary": .45, "device": .92, "velocity": 1.15, "geo": 1.10, "content": .92},
+}
+
+GENERATOR_ALIASES = {
+    "api": "api",
+    "api-abuse": "api-abuse",
+    "cross_channel": "cross_channel",
+    "cross-channel": "cross-channel",
+    "content": "content",
+    "synthetic-content": "synthetic-content",
 }
 
 SIGNAL_EFFECTS = {
@@ -46,7 +58,12 @@ SIGNAL_EFFECTS = {
 
 
 def _profile(generator_id: str) -> dict[str, float]:
-    return PROFILES.get(generator_id, PROFILES["transaction"])
+    normalized = GENERATOR_ALIASES.get(generator_id, generator_id)
+    return PROFILES.get(normalized, PROFILES["transaction"])
+
+
+def _is(generator_id: str, *names: str) -> bool:
+    return generator_id in names or GENERATOR_ALIASES.get(generator_id, generator_id) in names
 
 
 def _apply_signal_specificity(df: pd.DataFrame, idx: pd.Index, attack, rng: np.random.Generator) -> None:
@@ -132,8 +149,9 @@ def generate_attack_scenario(
     for attack_id in np.unique(assignments):
         idx = fraud_idx[assignments == attack_id]
         attack = attacks.get(str(attack_id))
-        generator = attack.generator_id if attack else "transaction"
-        p = _profile(generator)
+        generator_raw = attack.generator_id if attack else "transaction"
+        generator = GENERATOR_ALIASES.get(generator_raw, generator_raw)
+        p = _profile(generator_raw)
         strength = rng.uniform(.55, 1.0, len(idx))
 
         if attack is not None:
@@ -153,21 +171,18 @@ def generate_attack_scenario(
         df.loc[idx, "geo_distance_km"] = np.maximum(0, df.loc[idx, "geo_distance_km"] * p["geo"])
         df.loc[idx, "content_risk"] = np.clip(df.loc[idx, "content_risk"].astype(float) + p["content"] * strength, 0, 1)
         df.loc[idx, "urgency_score"] = np.clip(df.loc[idx, "urgency_score"].astype(float) + (.75 if generator == "social" else .18) * strength, 0, 1)
-        df.loc[idx, "approval_path_change"] = (rng.random(len(idx)) < (0.20 + .60 * (generator in {"social", "ato", "cross-channel", "autonomous"}))).astype(int)
-        df.loc[idx, "cross_rail_activity"] = (rng.random(len(idx)) < (.62 if generator in {"cross-channel", "autonomous", "aml"} else .06)).astype(int)
+        df.loc[idx, "approval_path_change"] = (rng.random(len(idx)) < (0.20 + .60 * (generator in {"social", "ato", "cross-channel", "cross_channel", "autonomous"}))).astype(int)
+        df.loc[idx, "cross_rail_activity"] = (rng.random(len(idx)) < (.62 if generator in {"cross-channel", "cross_channel", "autonomous", "aml"} else .06)).astype(int)
 
         _impose_network_patterns(df, idx, generator, rng)
         _apply_signal_specificity(df, idx, attack, rng)
 
-        if generator in {"cross-channel", "autonomous"}:
+        if generator in {"cross-channel", "cross_channel", "autonomous"}:
             idx_list = list(idx)
             cursor = 0
             while cursor < len(idx_list):
                 remaining = len(idx_list) - cursor
-                if remaining == 1:
-                    width = 1
-                else:
-                    width = int(rng.integers(2, min(4, remaining) + 1))
+                width = 1 if remaining == 1 else int(rng.integers(2, min(4, remaining) + 1))
                 members = idx_list[cursor: cursor + width]
                 sid = f"SCN-{seed}-{int(members[0]):06d}"
                 df.loc[members, "scenario_id"] = sid
