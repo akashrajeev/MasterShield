@@ -656,26 +656,4 @@ The challenge submission should present these as next-step engineering requireme
 - [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) — setup, experiments and reproducibility
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — optional deployment instructions
 
----
 
-## Project status
-
-The repository contains the integrated Next.js frontend and FastAPI research backend. PR #2, which connected the frontend to the backend, has been merged into `main`.
-
-The immediate submission workflow is now:
-
-```text
-Validate repository
-      ↓
-Regenerate benchmark artifacts
-      ↓
-Record measured results
-      ↓
-Complete solution walkthrough
-      ↓
-Submit GitHub repository + write-up + working prototype
-```
-
-## License
-
-See [`LICENSE`](LICENSE).
