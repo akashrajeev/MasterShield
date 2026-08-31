@@ -26,8 +26,20 @@ export default function SimulatorPage() {
     listBackendAttacks().then(x => { const a=x.map(adaptBackendAttack); setAttacks(a); const requested=a.find(item=>item.id===attackFromUrl); setSelected(requested?.id || a[0]?.id || ""); }).catch(e => setError(e.message));
   }, []);
   const chosen = attacks.find(a => a.id === selected);
+  const selectPreset = (presetId: string) => {
+    const p = presets.find(item => item.id === presetId);
+    if (!p) return;
+    setPreset(p.id); setEvents(p.events); setFraudRate(p.fraud_rate); setDifficulty(p.difficulty); setAdaptation(p.adaptation);
+    if (p.id === "identity") {
+      const match = attacks.find(a => a.category === "identity"); if (match) setSelected(match.id);
+    } else if (p.id === "social") {
+      const match = attacks.find(a => a.category === "social-engineering"); if (match) setSelected(match.id);
+    } else if (p.id === "top-hardest") {
+      const match = [...attacks].filter(a => a.difficulty === "very-high").sort((a,b) => b.noveltyScore - a.noveltyScore)[0]; if (match) setSelected(match.id);
+    }
+  };
   const run = async () => {
-    if (loading) return;
+    if (loading || !selected) return;
     setLoading(true); setError("");
     try {
       const config: SimulationConfig = { events, seed: 829134, attack_ids: preset === "landscape" ? null : [selected], fraud_rate: fraudRate, difficulty, adaptation, noise, threshold: .5 };
@@ -43,7 +55,7 @@ export default function SimulatorPage() {
     <div className="responsive-split responsive-split-balanced">
       <section className="panel" style={{padding:18}}><div className="panel-head"><div><h2>Threat Configuration</h2><p>Select a backend attack definition and simulation profile.</p></div><span className="badge badge-purple">{attacks.length} ATTACKS</span></div>
         <label className="control-group"><span>Attack</span><select value={selected} onChange={e => {setSelected(e.target.value);setPreset("custom");}} disabled={!attacks.length}><option value="" disabled>Select an attack</option>{attacks.map(a=><option key={a.id} value={a.id}>{a.id} · {a.name}</option>)}</select></label>
-        <div className="sim-presets">{presets.map(p=><button key={p.id} className={`preset-card ${preset===p.id?"active":""}`} onClick={()=>{setPreset(p.id);setEvents(p.events);setFraudRate(p.fraud_rate);setDifficulty(p.difficulty);setAdaptation(p.adaptation);}}><strong>{p.name}</strong><p>{p.events.toLocaleString()} events · {Math.round(p.fraud_rate*100)}% fraud</p></button>)}</div>
+        <div className="sim-presets">{presets.map(p=><button key={p.id} className={`preset-card ${preset===p.id?"active":""}`} onClick={()=>selectPreset(p.id)}><strong>{p.name}</strong><p>{p.events.toLocaleString()} events · {Math.round(p.fraud_rate*100)}% fraud</p></button>)}</div>
         <div className="sim-controls"><label className="control-group"><span>Events <b>{events.toLocaleString()}</b></span><input type="range" min="100" max="20000" step="100" value={events} onChange={e=>setEvents(+e.target.value)}/></label><label className="control-group"><span>Fraud rate <b>{Math.round(fraudRate*100)}%</b></span><input type="range" min=".05" max=".45" step=".05" value={fraudRate} onChange={e=>setFraudRate(+e.target.value)}/></label><label className="control-group"><span>Difficulty</span><select value={difficulty} onChange={e=>setDifficulty(e.target.value as any)}><option>low</option><option>medium</option><option>high</option><option>very-high</option></select></label><label className="control-group"><span>Adaptation</span><select value={adaptation} onChange={e=>setAdaptation(e.target.value as any)}><option value="static">Static</option><option value="adaptive">Adaptive</option><option value="adversarial">Adversarial</option></select></label><label className="control-group"><span>Noise</span><select value={noise} onChange={e=>setNoise(e.target.value as any)}><option>low</option><option>medium</option><option>high</option></select></label></div>
         {chosen && <div style={{marginTop:14,padding:12,background:"#0b1321",border:"1px solid #24344d",borderRadius:8}}><span className="mono">{chosen.id}</span><strong style={{display:"block",margin:"4px 0"}}>{chosen.name}</strong><p style={{margin:0,fontSize:10,color:"#8a97ae"}}>{chosen.description}</p></div>}
       </section>
