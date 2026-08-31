@@ -23,15 +23,17 @@ def _load_saved_model() -> Detector | None:
         return None
     try:
         mtime = MODEL_PATH.stat().st_mtime_ns
-        if _cached_model is None or _cached_mtime_ns != mtime:
-            with _lock:
-                if _cached_model is None or _cached_mtime_ns != mtime:
-                    candidate = Detector.load(MODEL_PATH)
-                    if candidate.VERSION != Detector.VERSION or Detector.FORBIDDEN_FEATURES.intersection(candidate.feature_names):
-                        return None
-                    _cached_model = candidate
-                    _cached_mtime_ns = mtime
-        return _cached_model
+        if _cached_model is not None and _cached_mtime_ns == mtime:
+            return _cached_model
+        with _lock:
+            if _cached_model is not None and _cached_mtime_ns == mtime:
+                return _cached_model
+            candidate = Detector.load(MODEL_PATH)
+            if candidate.VERSION != Detector.VERSION or Detector.FORBIDDEN_FEATURES.intersection(candidate.feature_names):
+                return None
+            _cached_model = candidate
+            _cached_mtime_ns = mtime
+            return candidate
     except (OSError, TypeError, ValueError):
         return None
 
@@ -40,30 +42,24 @@ def get_model(seed: int = 829134, train_events: int = 12000) -> Detector:
     saved = _load_saved_model()
     if saved is not None:
         return saved
-    with _lock:
-        saved = _load_saved_model()
-        if saved is not None:
-            return saved
-        attacks = load_attacks()
-        train = generate_attack_scenario(
-            train_events,
-            seed + 99,
-            [attack.id for attack in attacks],
-            .12,
-            "high",
-            "static",
-            "medium",
-        )
-        model = Detector().fit(build_features(train), train.ground_truth)
-        try:
-            MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            model.save(MODEL_PATH)
-            global _cached_model, _cached_mtime_ns
-            _cached_model = model
-            _cached_mtime_ns = MODEL_PATH.stat().st_mtime_ns
-        except OSError:
-            pass
-        return model
+
+    attacks = load_attacks()
+    train = generate_attack_scenario(
+        train_events,
+        seed + 99,
+        [attack.id for attack in attacks],
+        .12,
+        "high",
+        "static",
+        "medium",
+    )
+    model = Detector().fit(build_features(train), train.ground_truth)
+    try:
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        model.save(MODEL_PATH)
+    except OSError:
+        pass
+    return model
 
 
 def assess_frame(df: pd.DataFrame, threshold: float = .5, seed: int = 829134) -> list[dict[str, Any]]:
