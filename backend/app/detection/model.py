@@ -17,6 +17,10 @@ from sklearn.metrics import (
 from .thresholds import decision
 
 
+def _bounded(value: float) -> float:
+    return float(np.clip(value, 0.0, 1.0))
+
+
 class Detector:
     """Reproducible synthetic-payment fraud detector with fused risk signals."""
 
@@ -109,13 +113,13 @@ class Detector:
         auc = roc_auc_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         pr_auc = average_precision_score(y, scores) if len(np.unique(y)) > 1 else 0.0
         return {
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1": float(f1),
-            "roc_auc": float(auc),
-            "pr_auc": float(pr_auc),
-            "false_positive_rate": float(fp / max(fp + tn, 1)),
-            "false_negative_rate": float(fn / max(fn + tp, 1)),
+            "precision": _bounded(precision),
+            "recall": _bounded(recall),
+            "f1": _bounded(f1),
+            "roc_auc": _bounded(auc),
+            "pr_auc": _bounded(pr_auc),
+            "false_positive_rate": _bounded(fp / max(fp + tn, 1)),
+            "false_negative_rate": _bounded(fn / max(fn + tp, 1)),
             "true_positives": int(tp),
             "true_negatives": int(tn),
             "false_positives": int(fp),
