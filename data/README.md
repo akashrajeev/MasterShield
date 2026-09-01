@@ -1,7 +1,7 @@
 # Data Source of Truth
 
-`data/attacks/attacks.json` is the canonical 120-scenario attack catalog used by the FastAPI backend and the integrated frontend.
+`data/attacks/attacks.json` is the single canonical 120-scenario attack catalog used by the FastAPI backend and integrated frontend.
 
-The older `data/attacks.ts` file is retained only as legacy/reference data for historical UI helpers and is not the operational attack source. New frontend/backend features must use the canonical JSON catalog through the API.
+All transaction and entity datasets in this project are synthetic defensive research data.
 
-All transaction/entity datasets in this project are synthetic defensive research data.
+Do not create or maintain a second client-side attack catalog. New features must use the canonical JSON catalog through the API.

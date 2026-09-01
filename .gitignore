@@ -19,8 +19,15 @@ venv/
 
 # ML artifacts generated locally
 ml/models/*.joblib
+ml/models/*.json
+ml/results/*.json
 ml/results/*.sqlite3
 ml/results/*.db
+/data/sample/
+
+# Local QA artifacts
+MASTER_QA_REPORT_FINAL.md
+qa_*.json
 
 # Local environment files
 .env*.local

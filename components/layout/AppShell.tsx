@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { getCatalogSummary } from "@/lib/api/attacks";
 
 const navItems = [
   { label: "Overview", href: "/", icon: "⌘" },
-  { label: "Attack Library", href: "/attack-library", icon: "◈", badge: "120" },
+  { label: "Attack Library", href: "/attack-library", icon: "◈" },
   { label: "Red Team Simulator", href: "/simulator", icon: "⚡", tag: "SIMULATE" },
   { label: "Generated Data", href: "/generated-data", icon: "▣" },
   { label: "Blue Team Lab", href: "/detection-lab", icon: "◌" },
@@ -17,11 +19,27 @@ const navItems = [
 
 export function AppShell({ children, title = "Defense Overview" }: { children: ReactNode; title?: string }) {
   const pathname = usePathname();
+  const [attackCount, setAttackCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getCatalogSummary()
+      .then((summary) => {
+        if (active) setAttackCount(summary.attack_count);
+      })
+      .catch(() => {
+        if (active) setAttackCount(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return <main className="shell library-shell">
     <aside className="sidebar">
       <Link className="brand" href="/"><div className="brand-mark"><span className="mark-circle mark-red" /><span className="mark-circle mark-yellow" /></div><div className="brand-text"><span>MasterShield</span><small>DEFENSE LAB</small></div></Link>
       <div className="workspace"><span className="workspace-label">DEPLOYMENT CONTEXT</span><button className="workspace-btn"><span>Mastercard Innovation @ GFF 2026</span><span className="chevron">⌄</span></button></div>
-      <nav className="nav-menu">{navItems.map(item => { const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)); return <Link key={item.label} href={item.href} className={`nav-item ${isActive ? "active" : ""}`}><span className="nav-glyph">{item.icon}</span><span className="nav-label">{item.label}</span>{item.tag && <span className="nav-tag">{item.tag}</span>}{item.badge && <span className="nav-count">{item.badge}</span>}</Link>; })}</nav>
+      <nav className="nav-menu">{navItems.map(item => { const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)); return <Link key={item.label} href={item.href} className={`nav-item ${isActive ? "active" : ""}`}><span className="nav-glyph">{item.icon}</span><span className="nav-label">{item.label}</span>{item.tag && <span className="nav-tag">{item.tag}</span>}{item.badge && <span className="nav-count">{item.badge}</span>}{item.label === "Attack Library" && <span className="nav-count">{attackCount ?? "—"}</span>}</Link>; })}</nav>
       <div className="nav-divider" />
       <div className="demo-nav-wrap"><Link href="/demo" className={`nav-item nav-demo-item ${pathname === "/demo" ? "active" : ""}`}><span className="nav-glyph demo-star">★</span><span className="nav-label">Judge Demo (3-min)</span><span className="nav-tag demo-tag">EVALUATE</span></Link></div>
       <div className="sidebar-bottom"><div className="analyst"><div className="avatar">MC</div><div className="analyst-info"><strong>Evaluation Team</strong><span>Security Research Operations</span></div></div></div>
