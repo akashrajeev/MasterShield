@@ -16,7 +16,7 @@ def _fit_calibrated_model(
     seed: int,
     features: pd.DataFrame | None = None,
 ) -> tuple[Detector, float]:
-    """Fit a detector using one causal feature matrix and calibrate threshold without test leakage."""
+    """Fit a detector and choose its operating threshold on a held-out training-only calibration split."""
     feature_matrix = features if features is not None else build_features(dataset)
     fit_idx, calibration_idx = train_test_split(
         dataset.index,
@@ -24,25 +24,20 @@ def _fit_calibrated_model(
         random_state=seed,
         stratify=dataset["ground_truth"],
     )
-    fit_features = feature_matrix.loc[fit_idx]
-    calibration_features = feature_matrix.loc[calibration_idx]
-
-    model = Detector().fit(fit_features, dataset.loc[fit_idx, "ground_truth"])
-    calibration_scores = model.predict_scores(calibration_features)
+    model = Detector().fit(feature_matrix.loc[fit_idx], dataset.loc[fit_idx, "ground_truth"])
+    calibration_scores = model.predict_scores(feature_matrix.loc[calibration_idx])
     operating = select_operating_threshold(
         dataset.loc[calibration_idx, "ground_truth"],
         calibration_scores,
         max_false_positive_rate=CALIBRATION_MAX_FPR,
     )
-    final_model = Detector().fit(feature_matrix, dataset["ground_truth"])
-    return final_model, float(operating["threshold"])
+    return model, float(operating["threshold"])
 
 
 def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
-    """Run red-team search with causal features and an untouched final test set."""
+    """Run red-team search while keeping one fixed operating policy for before/after comparison."""
     # Build causal/history features once over the complete original event history.
-    # Splitting the already-built matrix preserves prior-event context for the
-    # untouched test population instead of resetting graph counters per split.
+    # This preserves prior-event context for every untouched test event.
     full_features = build_features(dataset)
     train, remainder = train_test_split(
         dataset,
@@ -66,6 +61,7 @@ def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
         "metrics": baseline,
         "operating_threshold": threshold,
         "calibration_max_fpr": CALIBRATION_MAX_FPR,
+        "threshold_policy": "fixed_baseline",
         "adversarial_examples": 0,
     }]
     augmented = train.copy()
@@ -82,9 +78,9 @@ def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
         hard["ground_truth"] = 1
         augmented = pd.concat([augmented, hard], ignore_index=True)
         augmented_features = build_features(augmented)
-        model, threshold = _fit_calibrated_model(augmented, seed + round_no * 1000, augmented_features)
-        # Reuse the original untouched-test feature matrix; augmentation must not
-        # rewrite the final test history or its causal network context.
+        model, _ = _fit_calibrated_model(augmented, seed + round_no * 1000, augmented_features)
+        # Keep the original operating policy fixed. Recalibrating after adding
+        # hard cases can hide regressions by moving the decision boundary.
         test_scores = model.predict_scores(full_features.loc[test.index])
         metrics = binary_metrics(test["ground_truth"], test_scores, threshold)
         history.append({
@@ -92,6 +88,7 @@ def harden_detector(dataset: pd.DataFrame, seed: int, rounds: int = 3) -> dict:
             "metrics": metrics,
             "operating_threshold": threshold,
             "calibration_max_fpr": CALIBRATION_MAX_FPR,
+            "threshold_policy": "fixed_baseline",
             "adversarial_examples": len(hard),
             "search": search_history,
         })
