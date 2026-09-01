@@ -30,7 +30,19 @@ def test_hardening_is_not_degenerate_on_very_high_synthetic_data():
         "medium",
     )
     result = harden_detector(df, 333334, rounds=1)
-    baseline_f1 = result["rounds"][0]["metrics"]["f1"]
-    final_f1 = result["rounds"][1]["metrics"]["f1"]
-    assert baseline_f1 > 0.50, f"degenerate baseline detector: F1={baseline_f1:.4f}"
-    assert final_f1 > 0.50, f"degenerate hardened detector: F1={final_f1:.4f}"
+    baseline = result["rounds"][0]
+    final = result["rounds"][1]
+    baseline_metrics = baseline["metrics"]
+    final_metrics = final["metrics"]
+    assert baseline_metrics["f1"] > 0.50, (
+        f"degenerate baseline detector: F1={baseline_metrics['f1']:.4f}, "
+        f"threshold={baseline['operating_threshold']:.2f}, "
+        f"TP={baseline_metrics['true_positives']}, FP={baseline_metrics['false_positives']}, "
+        f"FN={baseline_metrics['false_negatives']}, TN={baseline_metrics['true_negatives']}"
+    )
+    assert final_metrics["f1"] > 0.50, (
+        f"degenerate hardened detector: F1={final_metrics['f1']:.4f}, "
+        f"threshold={final['operating_threshold']:.2f}, "
+        f"TP={final_metrics['true_positives']}, FP={final_metrics['false_positives']}, "
+        f"FN={final_metrics['false_negatives']}, TN={final_metrics['true_negatives']}"
+    )
